@@ -13,8 +13,8 @@ html { background: var(--paper); }
 body { margin: 0; background: var(--paper); color: var(--ink); font-family: Arial, Helvetica, sans-serif; }
 button, input, textarea { font: inherit; }
 button { cursor: pointer; }
-::selection { background: #86d6bd; color: #10231d; }
-::-moz-selection { background: #86d6bd; color: #10231d; }
+::selection { background: #86d6bd; }
+::-moz-selection { background: #86d6bd; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .rise { animation: rise .45s ease-out both; }
 .logo-dark { display: none; }
