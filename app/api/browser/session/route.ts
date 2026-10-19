@@ -1,4 +1,3 @@
-import Browserbase from "@browserbasehq/sdk";
 import { databaseEnabled, getSupabase } from "@/lib/db";
 import { Scape } from "@/lib/mock-data";
 
@@ -27,12 +26,12 @@ function destination(value?: string) {
 async function openRemotePage(connectUrl: string, url: string) {
   const socket = new WebSocket(connectUrl);
   await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("CDP connection timed out")), 4_000);
+    const timeout = setTimeout(() => reject(new Error("CDP connection timed out")), 7_000);
     socket.addEventListener("open", () => { clearTimeout(timeout); resolve(); }, { once: true });
     socket.addEventListener("error", () => { clearTimeout(timeout); reject(new Error("CDP connection failed")); }, { once: true });
   });
   await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("Navigation timed out")), 4_000);
+    const timeout = setTimeout(() => reject(new Error("Navigation timed out")), 7_000);
     socket.addEventListener("message", (event) => {
       const message = JSON.parse(String(event.data)) as { id?: number; error?: unknown };
       if (message.id !== 1) return;
@@ -45,9 +44,25 @@ async function openRemotePage(connectUrl: string, url: string) {
   socket.close();
 }
 
+function interactiveViewerUrl(value: string) {
+  const url = new URL(value);
+  url.searchParams.set("interactive", "true");
+  url.searchParams.set("showControls", "true");
+  return url.toString();
+}
+
+function steelConnectUrl(value: string, apiKey: string) {
+  const url = new URL(value);
+  url.searchParams.set("apiKey", apiKey);
+  return url.toString();
+}
+
+type SteelSession = { id?: string; debugUrl?: string; sessionViewerUrl?: string; websocketUrl?: string; expiresAt?: string };
+
 export async function POST(request: Request) {
   if (!databaseEnabled) return Response.json({ error: "Database is not configured" }, { status: 503 });
-  if (!process.env.BROWSERBASE_API_KEY || !process.env.BROWSERBASE_PROJECT_ID) {
+  const apiKey = process.env.STEEL_API_KEY;
+  if (!apiKey) {
     return Response.json({ error: "Remote browsing is not configured" }, { status: 503 });
   }
 
@@ -62,40 +77,24 @@ export async function POST(request: Request) {
   if (readError || !scape) return Response.json({ error: "Scape not found" }, { status: 404 });
   if (!canAccess(scape, user.id, user.email)) return Response.json({ error: "You do not have access to this Scape" }, { status: 403 });
 
-  const browserbase = new Browserbase({ apiKey: process.env.BROWSERBASE_API_KEY });
-  let contextId = scape.browserContexts?.[user.id];
-  if (!contextId) {
-    const context = await browserbase.contexts.create({
-      projectId: process.env.BROWSERBASE_PROJECT_ID,
-      name: `deepscapes-${scape.id}-${user.id}`.slice(0, 120),
-    });
-    contextId = context.id;
-    const updated = { ...scape, browserContexts: { ...scape.browserContexts, [user.id]: contextId } };
-    const { error: writeError } = await supabase.from("scapes").upsert({ id: scape.id, payload: updated, updated_at: new Date().toISOString() }, { onConflict: "id" });
-    if (writeError) return Response.json({ error: "Could not prepare your private browser" }, { status: 500 });
-  }
-
-  let session;
-  try {
-    session = await browserbase.sessions.create({
-      projectId: process.env.BROWSERBASE_PROJECT_ID,
-      api_timeout: 3600,
-      browserSettings: { context: { id: contextId, persist: true }, viewport: { width: 1440, height: 960 } },
-      userMetadata: { scapeId: scape.id, userId: user.id },
-    });
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "The remote browser service is unavailable.";
-    if (detail.includes("browser minutes limit reached")) {
-      return Response.json({ error: "Remote browsing is unavailable because the Browserbase free browser-minute limit has been reached. Add browser time or migrate this panel to Steel." }, { status: 402 });
-    }
-    return Response.json({ error: "The remote browser service could not start. Please try again shortly." }, { status: 502 });
-  }
+  const response = await fetch("https://api.steel.dev/v1/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "steel-api-key": apiKey },
+    body: JSON.stringify({ timeout: 1_800_000, inactivityTimeout: 300_000, dimensions: { width: 1440, height: 960 }, debugConfig: { interactive: true } }),
+    cache: "no-store",
+  }).catch(() => undefined);
+  let session: SteelSession | undefined;
+  try { session = response ? await response.json() as SteelSession : undefined; } catch { session = undefined; }
+  if (!response?.ok || !session) return Response.json({ error: "Steel could not start a remote browser. Check the Steel account and try again." }, { status: 502 });
+  const viewer = session.debugUrl ?? session.sessionViewerUrl;
+  if (!viewer) return Response.json({ error: "Steel did not provide a browser viewer." }, { status: 502 });
   const start = destination(target);
-  try {
-    await openRemotePage(session.connectUrl, start.url);
-  } catch {
-    // The live view remains usable even if Browserbase is slow to accept navigation.
+  if (session.websocketUrl) {
+    try {
+      await openRemotePage(steelConnectUrl(session.websocketUrl, apiKey), start.url);
+    } catch {
+      // The embedded Steel controls remain available if the initial navigation is delayed.
+    }
   }
-  const live = await browserbase.sessions.debug(session.id, { expiresIn: 3600 });
-  return Response.json({ sessionId: session.id, liveViewUrl: live.debuggerFullscreenUrl, expiresAt: session.expiresAt, destination: start });
+  return Response.json({ sessionId: session.id, liveViewUrl: interactiveViewerUrl(viewer), expiresAt: session.expiresAt, destination: start });
 }
