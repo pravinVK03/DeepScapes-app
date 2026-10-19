@@ -23,7 +23,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
   
   return (
     <header className="border-b border-[#d8dcd7]">
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-4 sm:px-8">
+      <div className="flex w-full items-center justify-between px-5 py-4 sm:px-8 lg:px-12">
         <div className="flex items-center gap-8">
           <Link href={user ? "/scapes" : "/"} className="group flex items-center rounded-xl py-1" aria-label="DeepScapes home">
             <Image src="/deepscapes-logo-black.png?v=20260908" alt="DeepScapes" width={228} height={45} className="logo-light h-auto w-40 sm:w-48" priority unoptimized/>

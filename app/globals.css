@@ -34,9 +34,10 @@ html.dark input, html.dark textarea { background: #171717 !important; color: #f5
 html.dark select { appearance: auto; background: #171717 !important; color: #f5f5f5 !important; color-scheme: dark; }
 html.dark select option { background: #171717 !important; color: #f5f5f5 !important; }
 html.dark input::placeholder, html.dark textarea::placeholder { color: #777 !important; }
-html.dark .group:hover, html.dark button:hover, html.dark a:hover { border-color: #777 !important; }
-html.dark .group:hover { background: #202020 !important; box-shadow: 0 18px 42px rgb(0 0 0 / .46) !important; }
-html.dark .group:hover [style^="background:"] { background: #2a2a2a !important; }
+html.dark .scape-card:hover { background: #1d1d1d !important; border-color: #5a5a5a !important; box-shadow: 0 18px 42px rgb(0 0 0 / .46) !important; }
+html.dark .new-scape-card:hover { background: #242424 !important; border-color: #777 !important; }
+html.dark .profile-menu a:hover, html.dark .profile-menu button:hover { background: #2a2a2a !important; border-color: transparent !important; color: #f5f5f5 !important; }
+html.dark .profile-menu .profile-signout:hover { color: #ff9b92 !important; }
 html.dark .hover\:bg-\[\#254235\]:hover { background: #dedede !important; color: #111 !important; }
 html.dark nav { background: #171717 !important; border-color: #383838 !important; }
 html.dark nav .bg-\[\#315443\] { background: #f5f5f5 !important; color: #111 !important; }
