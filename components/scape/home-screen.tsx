@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/ui/app-header";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -17,12 +18,10 @@ function createdLabel(createdAt?: string) {
 }
 
 function ScapeCard({ scape, index }: { scape: Scape; index: number }) {
-  const cover = scape.cover.startsWith("data:")
-    ? { backgroundImage: `url(${scape.cover})`, backgroundSize: "cover", backgroundPosition: "center" }
-    : { background: scape.cover };
+  const cover = { "--scape-cover": scape.cover.startsWith("data:") ? "url(" + scape.cover + ")" : scape.cover } as CSSProperties;
 
   return <Link href={`/workspace/${scape.id}`} className="scape-card rise group overflow-hidden rounded-2xl border border-[#e5e8e2] bg-white shadow-[0_8px_30px_rgba(23,35,29,.035)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(23,35,29,.09)]" style={{ animationDelay: `${index * 70}ms` }}>
-    <div className="h-36 p-4" style={cover}><div className="flex h-full items-end"><span className="rounded-full bg-black/30 px-3 py-1 text-xs text-white backdrop-blur">{scape.template}</span></div></div>
+    <div className="scape-card-cover h-36 p-4" style={cover}><div className="flex h-full items-end"><span className="rounded-full bg-black/30 px-3 py-1 text-xs text-white backdrop-blur">{scape.template}</span></div></div>
     <div className="p-4"><div className="flex items-center justify-between"><h3 className="font-semibold tracking-[-.03em]">{scape.title}</h3><Icon name="arrow" className="h-4 w-4 text-[#718077] transition group-hover:translate-x-1" /></div>{scape.description && <p className="mt-2 line-clamp-2 text-sm leading-5 text-[#718077]">{scape.description}</p>}<p className="mt-4 text-xs text-[#9aa39d]">{createdLabel(scape.createdAt)}</p></div>
   </Link>;
 }

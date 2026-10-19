@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/ui/icons";
 import { Resource } from "@/lib/mock-data";
@@ -12,7 +12,7 @@ const log = (action: string, detail: string) => ({ id: newId("activity"), action
 function extension(title: string) { const part = title.split(".").pop(); return part && part !== title ? part.toUpperCase() : "FILE"; }
 
 export default function ResourceViewer() {
-  const params = useParams<{ id: string; resourceId: string }>(); const router = useRouter(); const scape = useScape(params.id); const [editing, setEditing] = useState(false);
+  const params = useParams<{ id: string; resourceId: string }>(); const router = useRouter(); const searchParams = useSearchParams(); const scape = useScape(params.id); const [editing, setEditing] = useState(() => searchParams.get("edit") === "1");
   const resource = scape?.resources.find((item) => item.id === params.resourceId);
   if (!scape || !resource) return <main className="grid min-h-screen place-items-center text-sm text-[#718077]"><button onClick={() => router.push("/workspace/" + params.id)}>Return to workspace</button></main>;
   function save(title: string, content: string) { void saveScape({ ...scape!, resources: scape!.resources.map((item) => item.id === resource!.id ? { ...item, title, content } : item), activity: [log("Resource updated", title), ...scape!.activity] }); setEditing(false); }
