@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   if (scapeError) return Response.json({ error: scapeError.message }, { status: 500 });
   if (!existing.length) {
     const scape: Scape = {
-      id: `scape-${user.id}`, title: `${username}'s Scape`, description: "A personal space for everything you are working on.", template: "Blank Scape", cover: "#315443", updated: "Just created", ownerId: user.id,
+      id: `scape-${user.id}`, title: `${username}'s Scape`, description: "A personal space for everything you are working on.", template: "Blank Scape", cover: "#315443", updated: "Just created", createdAt: new Date().toISOString(), ownerId: user.id,
       collaborators: [{ id: user.id, name: username, email: user.email, permission: "edit" }], resources: [],
       activity: [{ id: "created", action: "Scape created", detail: "Your personal Scape", time: "Just now" }],
     };

@@ -3,7 +3,7 @@ export type Resource = { id: string; title: string; type: ResourceType; detail: 
 export type Activity = { id: string; action: string; detail: string; time: string };
 export type CollaborationPermission = "view" | "edit";
 export type Collaborator = { id: string; name: string; email: string; permission: CollaborationPermission; pending?: boolean };
-export type Scape = { id: string; title: string; description: string; template: string; cover: string; updated: string; resources: Resource[]; activity: Activity[]; ownerId?: string; collaborators?: Collaborator[] };
+export type Scape = { id: string; title: string; description: string; template: string; cover: string; updated: string; createdAt?: string; resources: Resource[]; activity: Activity[]; ownerId?: string; collaborators?: Collaborator[] };
 export type Template = { name: string; icon: string; color: string; description: string; sections: string[] };
 export const templates = [
   { name: "Blank Scape", icon: "＋", color: "#eceee9", description: "A clear, open space for whatever comes next.", sections: [] },

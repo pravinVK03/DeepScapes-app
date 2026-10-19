@@ -22,10 +22,12 @@ export async function GET(request: Request) {
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
   const { data, error } = await getSupabase()
     .from("scapes")
-    .select("payload")
+    .select("payload, created_at")
     .order("updated_at", { ascending: false });
   if (error) return Response.json({ error: error.message }, { status: 500 });
-  const scapes = data.map((row) => row.payload as Scape).filter((scape) => canAccess(scape, user.id, user.email));
+  const scapes = data
+    .map((row) => ({ ...(row.payload as Scape), createdAt: (row.payload as Scape).createdAt ?? row.created_at }))
+    .filter((scape) => canAccess(scape, user.id, user.email));
   return Response.json({ scapes, connected: true });
 }
 
@@ -37,7 +39,9 @@ export async function POST(request: Request) {
   const { data: existing } = await getSupabase().from("scapes").select("payload").eq("id", received.id).maybeSingle();
   const existingScape = existing?.payload as Scape | undefined;
   if (existingScape && !canAccess(existingScape, user.id, user.email, true)) return Response.json({ error: "Editor access is required" }, { status: 403 });
-  const scape: Scape = existingScape ? received : { ...received, ownerId: user.id, collaborators: received.collaborators?.length ? received.collaborators : [{ id: user.id, name: user.email?.split("@")[0] ?? "Owner", email: user.email ?? "", permission: "edit" }] };
+  const scape: Scape = existingScape
+    ? { ...received, createdAt: existingScape.createdAt }
+    : { ...received, createdAt: received.createdAt ?? new Date().toISOString(), ownerId: user.id, collaborators: received.collaborators?.length ? received.collaborators : [{ id: user.id, name: user.email?.split("@")[0] ?? "Owner", email: user.email ?? "", permission: "edit" }] };
   const { error } = await getSupabase().from("scapes").upsert(
     { id: scape.id, payload: scape, updated_at: new Date().toISOString() },
     { onConflict: "id" },
