@@ -1,4 +1,5 @@
 import Browserbase from "@browserbasehq/sdk";
+import { chromium } from "playwright-core";
 import { databaseEnabled, getSupabase } from "@/lib/db";
 import { Scape } from "@/lib/mock-data";
 
@@ -16,6 +17,14 @@ function canAccess(scape: Scape, userId: string, email?: string) {
   return scape.collaborators?.some((person) => person.id === userId || person.email === email) ?? false;
 }
 
+function destination(value?: string) {
+  const input = value?.trim();
+  if (!input) return { url: "https://www.google.com", label: "Google" };
+  if (/^https?:\/\//i.test(input)) return { url: input, label: input };
+  if (input.includes(".") && !/\s/.test(input)) return { url: "https://" + input, label: input };
+  return { url: "https://www.google.com/search?q=" + encodeURIComponent(input), label: input };
+}
+
 export async function POST(request: Request) {
   if (!databaseEnabled) return Response.json({ error: "Database is not configured" }, { status: 503 });
   if (!process.env.BROWSERBASE_API_KEY || !process.env.BROWSERBASE_PROJECT_ID) {
@@ -24,7 +33,7 @@ export async function POST(request: Request) {
 
   const user = await currentUser(request);
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
-  const { scapeId } = await request.json() as { scapeId?: string };
+  const { scapeId, target } = await request.json() as { scapeId?: string; target?: string };
   if (!scapeId) return Response.json({ error: "Scape is required" }, { status: 400 });
 
   const supabase = getSupabase();
@@ -52,6 +61,15 @@ export async function POST(request: Request) {
     browserSettings: { context: { id: contextId, persist: true }, viewport: { width: 1440, height: 960 } },
     userMetadata: { scapeId: scape.id, userId: user.id },
   });
+  const start = destination(target);
+  try {
+    const browser = await chromium.connectOverCDP(session.connectUrl);
+    const context = browser.contexts()[0];
+    const page = context.pages()[0] ?? await context.newPage();
+    await page.goto(start.url, { waitUntil: "domcontentloaded", timeout: 20_000 });
+  } catch {
+    return Response.json({ error: "The remote browser started, but could not open that address." }, { status: 502 });
+  }
   const live = await browserbase.sessions.debug(session.id, { expiresIn: 3600 });
-  return Response.json({ sessionId: session.id, liveViewUrl: live.debuggerFullscreenUrl, expiresAt: session.expiresAt });
+  return Response.json({ sessionId: session.id, liveViewUrl: live.debuggerFullscreenUrl, expiresAt: session.expiresAt, destination: start });
 }

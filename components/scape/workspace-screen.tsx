@@ -51,18 +51,18 @@ export default function WorkspaceScreen() {
 }
 
 function InScapeBrowser({ scapeId, onLog }: { scapeId: string; onLog: (records: WebLog[]) => void }) {
-  const [liveViewUrl, setLiveViewUrl] = useState(""); const [opening, setOpening] = useState(false); const [message, setMessage] = useState("");
+  const [liveViewUrl, setLiveViewUrl] = useState(""); const [input, setInput] = useState(""); const [opening, setOpening] = useState(false); const [message, setMessage] = useState("");
   async function open() {
     setOpening(true); setMessage("");
     const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
     if (!token) { setOpening(false); setMessage("Sign in to open your private browser."); return; }
-    const response = await fetch("/api/browser/session", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId }) }).catch(() => undefined);
-    const data = response ? await response.json() as { liveViewUrl?: string; error?: string } : undefined;
+    const response = await fetch("/api/browser/session", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId, target: input }) }).catch(() => undefined);
+    const data = response ? await response.json() as { liveViewUrl?: string; error?: string; destination?: { url: string; label: string } } : undefined;
     if (!response?.ok || !data?.liveViewUrl) { setOpening(false); setMessage(data?.error ?? "Could not start the remote browser."); return; }
-    const records = [{ label: "Remote browser opened", url: data.liveViewUrl, time: new Date().toISOString() }, ...readWebLog(scapeId).filter((item) => item.url !== data.liveViewUrl)];
+    const records = [{ label: data.destination?.label ?? "Remote browser opened", url: data.destination?.url ?? data.liveViewUrl, time: new Date().toISOString() }, ...readWebLog(scapeId).filter((item) => item.url !== (data.destination?.url ?? data.liveViewUrl))];
     saveWebLog(scapeId, records); onLog(records); setLiveViewUrl(data.liveViewUrl); setOpening(false);
   }
-  return <section className="overflow-hidden rounded-2xl border border-[#e5e8e2] bg-white"><div className="flex flex-wrap items-center justify-between gap-3 p-4"><p className="font-semibold">Browse</p><div className="flex items-center gap-2"><button onClick={open} disabled={opening} className="rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{opening ? "Starting…" : liveViewUrl ? "New session" : "Open browser"}</button>{liveViewUrl && <a href={liveViewUrl} target="_blank" rel="noreferrer" className="rounded-lg border px-3 py-2 text-sm">Full screen ↗</a>}</div></div>{message && <p className="border-t border-[#e5e8e2] px-4 py-3 text-sm text-[#718077]">{message}</p>}{liveViewUrl && <div className="border-t border-[#e5e8e2]"><iframe title="DeepScapes remote browser" src={liveViewUrl} className="h-[42rem] w-full border-0 bg-white" allow="clipboard-read; clipboard-write" /></div>}</section>;
+  return <section className="overflow-hidden rounded-2xl border border-[#e5e8e2] bg-white"><div className="flex flex-wrap items-center justify-between gap-3 p-4"><p className="font-semibold">Browse</p><div className="flex w-full max-w-2xl gap-2 sm:w-auto"><input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void open()} placeholder="Search the web or enter a website" className="min-w-0 flex-1 rounded-lg border border-[#dce1d9] bg-white px-3 py-2 text-sm outline-none sm:w-72" /><button onClick={() => void open()} disabled={opening} className="shrink-0 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{opening ? "Starting…" : liveViewUrl ? "New session" : "Open"}</button>{liveViewUrl && <a href={liveViewUrl} target="_blank" rel="noreferrer" className="shrink-0 rounded-lg border px-3 py-2 text-sm">Full screen ↗</a>}</div></div>{message && <p className="border-t border-[#e5e8e2] px-4 py-3 text-sm text-[#718077]">{message}</p>}{liveViewUrl && <div className="border-t border-[#e5e8e2]"><iframe title="DeepScapes remote browser" src={liveViewUrl} className="h-[42rem] w-full border-0 bg-white" allow="clipboard-read; clipboard-write" /></div>}</section>;
 }
 
 function ResourceSection({ section, resources, scape, canEdit, onAdd, onToggle, onStar, onMaximize }: { section: { label: string; type: ResourceType | "starred"; icon: string }; resources: Resource[]; scape: Scape; canEdit: boolean; onAdd: () => void; onToggle: (resource: Resource) => void; onStar: (resource: Resource) => void; onMaximize: () => void }) {
