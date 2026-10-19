@@ -1,5 +1,5 @@
 export type ResourceType = "note" | "task" | "file" | "image" | "video" | "audio" | "link";
-export type Resource = { id: string; title: string; type: ResourceType; detail: string; date: string; done?: boolean; content?: string; mimeType?: string };
+export type Resource = { id: string; title: string; type: ResourceType; detail: string; date: string; done?: boolean; starred?: boolean; content?: string; mimeType?: string };
 export type Activity = { id: string; action: string; detail: string; time: string };
 export type CollaborationPermission = "view" | "edit";
 export type Collaborator = { id: string; name: string; email: string; permission: CollaborationPermission; pending?: boolean };
