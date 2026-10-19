@@ -58,3 +58,18 @@ html.dark .profile-menu, html.dark .share-dialog { background: #171717 !importan
 html.dark .profile-menu a, html.dark .profile-menu button { color: #f5f5f5 !important; }
 html.dark .profile-menu .profile-signout { color: #ff9b92 !important; }
 
+html.dark .profile-trigger {
+  background: #171717 !important;
+  border-color: #3a3a3a !important;
+  color: #f5f5f5 !important;
+}
+
+html.dark .profile-trigger:hover,
+html.dark .profile-trigger[aria-expanded="true"] {
+  background: #2a2a2a !important;
+  border-color: #5a5a5a !important;
+  color: #f5f5f5 !important;
+}
+
+html.dark .profile-trigger > span:last-child { color: #f5f5f5 !important; }
+
