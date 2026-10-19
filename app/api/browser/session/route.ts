@@ -1,5 +1,4 @@
 import Browserbase from "@browserbasehq/sdk";
-import { chromium } from "playwright-core";
 import { databaseEnabled, getSupabase } from "@/lib/db";
 import { Scape } from "@/lib/mock-data";
 
@@ -23,6 +22,27 @@ function destination(value?: string) {
   if (/^https?:\/\//i.test(input)) return { url: input, label: input };
   if (input.includes(".") && !/\s/.test(input)) return { url: "https://" + input, label: input };
   return { url: "https://www.google.com/search?q=" + encodeURIComponent(input), label: input };
+}
+
+async function openRemotePage(connectUrl: string, url: string) {
+  const socket = new WebSocket(connectUrl);
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("CDP connection timed out")), 4_000);
+    socket.addEventListener("open", () => { clearTimeout(timeout); resolve(); }, { once: true });
+    socket.addEventListener("error", () => { clearTimeout(timeout); reject(new Error("CDP connection failed")); }, { once: true });
+  });
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Navigation timed out")), 4_000);
+    socket.addEventListener("message", (event) => {
+      const message = JSON.parse(String(event.data)) as { id?: number; error?: unknown };
+      if (message.id !== 1) return;
+      clearTimeout(timeout);
+      if (message.error) reject(new Error("Remote browser rejected navigation"));
+      else resolve();
+    });
+    socket.send(JSON.stringify({ id: 1, method: "Target.createTarget", params: { url } }));
+  });
+  socket.close();
 }
 
 export async function POST(request: Request) {
@@ -63,12 +83,9 @@ export async function POST(request: Request) {
   });
   const start = destination(target);
   try {
-    const browser = await chromium.connectOverCDP(session.connectUrl);
-    const context = browser.contexts()[0];
-    const page = context.pages()[0] ?? await context.newPage();
-    await page.goto(start.url, { waitUntil: "domcontentloaded", timeout: 8_000 }).catch(() => undefined);
+    await openRemotePage(session.connectUrl, start.url);
   } catch {
-    // The live view is still useful even if the browser service is slow to accept CDP.
+    // The live view remains usable even if Browserbase is slow to accept navigation.
   }
   const live = await browserbase.sessions.debug(session.id, { expiresIn: 3600 });
   return Response.json({ sessionId: session.id, liveViewUrl: live.debuggerFullscreenUrl, expiresAt: session.expiresAt, destination: start });
