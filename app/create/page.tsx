@@ -1,2 +1,3 @@
 import CreateScape from "@/components/scape/create-scape";
-export default function Page() { return <CreateScape />; }
+import { RequireAuth } from "@/components/auth/require-auth";
+export default function Page() { return <RequireAuth><CreateScape /></RequireAuth>; }

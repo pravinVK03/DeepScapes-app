@@ -5,7 +5,7 @@
 @theme inline {
   --color-background: var(--paper);
   --color-foreground: var(--ink);
-  --font-sans: var(--font-geist);
+  --font-sans: Arial, Helvetica, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -31,6 +31,8 @@ html.dark .text-\[\#718077\], html.dark .text-\[\#8b968e\], html.dark .text-\[\#
 html.dark .bg-\[\#315443\] { background: #f5f5f5 !important; color: #111 !important; }
 html.dark .bg-\[\#315443\] *, html.dark .bg-\[\#315443\] { color: #111 !important; }
 html.dark input, html.dark textarea { background: #171717 !important; color: #f5f5f5 !important; }
+html.dark select { appearance: auto; background: #171717 !important; color: #f5f5f5 !important; color-scheme: dark; }
+html.dark select option { background: #171717 !important; color: #f5f5f5 !important; }
 html.dark input::placeholder, html.dark textarea::placeholder { color: #777 !important; }
 html.dark .group:hover, html.dark button:hover, html.dark a:hover { border-color: #777 !important; }
 html.dark .group:hover { background: #202020 !important; box-shadow: 0 18px 42px rgb(0 0 0 / .46) !important; }
@@ -51,4 +53,7 @@ html.dark .workspace-cover { background-color: #202020 !important; color: #f5f5f
 html.dark .workspace-cover .bg-\[\#315443\] { background: #f5f5f5 !important; }
 html.dark .workspace-cover .bg-\[\#315443\] * { color: #111 !important; }
 html.dark .template-swatch { background: #2a2a2a !important; color: #f5f5f5 !important; }
+html.dark .profile-menu, html.dark .share-dialog { background: #171717 !important; }
+html.dark .profile-menu a, html.dark .profile-menu button { color: #f5f5f5 !important; }
+html.dark .profile-menu .profile-signout { color: #ff9b92 !important; }
 

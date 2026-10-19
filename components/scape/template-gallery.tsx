@@ -6,11 +6,13 @@ import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/ui/app-header";
 import { Scape, Template, templates as builtInTemplates } from "@/lib/mock-data";
 import { addScape, newId } from "@/lib/scape-store";
+import { useAuth } from "@/components/auth/auth-provider";
 
 export default function TemplateGallery() {
   const params = useSearchParams();
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>(builtInTemplates);
+  const { user } = useAuth();
   const title = params.get("title") || "Untitled Scape";
   const description = params.get("description") || "";
 
@@ -36,6 +38,8 @@ export default function TemplateGallery() {
       id, title, description, template: template.name, cover: thumbnail || template.color,
       updated: "Just created", resources,
       activity: [{ id: "created", action: "Scape created", detail: template.name, time: "Just now" }],
+      ownerId: user?.id,
+      collaborators: user?.email ? [{ id: user.id, name: typeof user.user_metadata.username === "string" ? user.user_metadata.username : user.email.split("@")[0], email: user.email, permission: "edit" }] : [],
     };
     addScape(scape);
     router.push(`/workspace/${id}`);

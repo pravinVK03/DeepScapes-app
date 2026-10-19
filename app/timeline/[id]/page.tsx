@@ -1,2 +1,3 @@
 import TimelineScreen from "@/components/scape/timeline-screen";
-export default function Page() { return <TimelineScreen />; }
+import { RequireAuth } from "@/components/auth/require-auth";
+export default function Page() { return <RequireAuth><TimelineScreen /></RequireAuth>; }

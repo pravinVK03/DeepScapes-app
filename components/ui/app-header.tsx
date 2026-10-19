@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Icon } from "./icons";
+import { useAuth } from "@/components/auth/auth-provider";
 
 // 1. Define the type for the navigation items
 interface NavItem {
@@ -15,20 +16,16 @@ interface NavItem {
 const navItems: NavItem[] = [];
 
 export function AppHeader({ compact = false }: { compact?: boolean }) { 
-  const [dark, setDark] = useState(true); 
+  const [profileOpen, setProfileOpen] = useState(false);
   const pathname = usePathname(); 
+  const { user, loading, signOut } = useAuth();
+  const username = typeof user?.user_metadata.username === "string" ? user.user_metadata.username : user?.email?.split("@")[0];
   
-  const toggle = () => { 
-    const next = !document.documentElement.classList.contains("dark"); 
-    document.documentElement.classList.toggle("dark", next); 
-    setDark(next); 
-  };
-
   return (
     <header className="border-b border-[#d8dcd7]">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-4 sm:px-8">
         <div className="flex items-center gap-8">
-          <Link href="/" className="group flex items-center rounded-xl py-1" aria-label="DeepScapes home">
+          <Link href={user ? "/scapes" : "/"} className="group flex items-center rounded-xl py-1" aria-label="DeepScapes home">
             <Image src="/deepscapes-logo-black.png?v=20260908" alt="DeepScapes" width={228} height={45} className="logo-light h-auto w-40 sm:w-48" priority unoptimized/>
             <Image src="/deepscapes-logo-white.png?v=20260908" alt="DeepScapes" width={228} height={45} className="logo-dark h-auto w-40 sm:w-48" priority unoptimized/>
           </Link>
@@ -50,13 +47,13 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button suppressHydrationWarning onClick={toggle} className="grid h-9 w-9 place-items-center rounded-lg border border-[#dce1d9] bg-white text-sm text-[#315443] transition hover:bg-[#edf0df]" aria-label="Toggle dark mode">
-            {dark ? "☀" : "◐"}
-          </button>
-          <Link href="/create" className="inline-flex items-center gap-2 rounded-lg bg-[#315443] px-3.5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#254235]">
+          {user && pathname.match(/^\/workspace\/[^/]+$/) && <Link href={`${pathname}/share`} className="hidden rounded-lg border border-[#dce1d9] px-3 py-2 text-sm sm:inline-flex">Share</Link>}
+          {user ? <div className="relative"><button onClick={() => setProfileOpen((open) => !open)} className="flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition hover:bg-[#edf0df]" aria-expanded={profileOpen} aria-label="Open profile menu"><span className="grid h-6 w-6 place-items-center rounded-full bg-[#315443] text-xs font-semibold text-white">{username?.slice(0, 1).toUpperCase()}</span><span className="hidden max-w-28 truncate sm:inline">{username}</span></button>{profileOpen && <div className="profile-menu absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl border border-[#dce1d9] bg-white p-1 shadow-xl"><div className="border-b border-[#e5e8e2] px-3 py-2"><p className="truncate text-sm font-medium">{username}</p><p className="truncate text-xs text-[#718077]">{user.email}</p></div><Link onClick={() => setProfileOpen(false)} href="/scapes" className="block rounded-lg px-3 py-2 text-sm hover:bg-[#edf0df]">Your Scapes</Link><Link onClick={() => setProfileOpen(false)} href="/create" className="block rounded-lg px-3 py-2 text-sm hover:bg-[#edf0df]">Create Scape</Link><button onClick={() => { setProfileOpen(false); void signOut(); }} className="profile-signout block w-full rounded-lg px-3 py-2 text-left text-sm text-[#a95b54] hover:bg-[#edf0df]">Sign out</button></div>}</div> : !loading && !compact && <Link href="/login" className="hidden rounded-lg px-2 py-2 text-sm text-[#718077] sm:block">Sign in</Link>}
+          {!compact && user && <Link href="/create" className="inline-flex items-center gap-2 rounded-lg bg-[#315443] px-3.5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#254235]">
             <Icon name="plus" className="h-4 w-4"/>
-            <span className={compact ? "sr-only" : "hidden sm:inline"}>New Scape</span>
+            <span className="hidden sm:inline">New Scape</span>
           </Link>
+          }
         </div>
       </div>
     </header>

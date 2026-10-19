@@ -1,41 +1,29 @@
-<<<<<<< HEAD
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DeepScapes-app
 
-## Getting Started
+DeepScapes is a project-centric workspace for keeping notes, tasks, files, media, references, and activity history in one Scape.
 
-First, run the development server:
+## Run locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Supabase PostgreSQL setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Create a Supabase project.
+2. In its SQL Editor, run [`supabase-schema.sql`](./supabase-schema.sql).
+3. Copy `.env.example` to `.env.local` and set the four values from Supabase Project Settings → API.
+4. Restart the development server.
 
-## Learn More
+## Authentication
 
-To learn more about Next.js, take a look at the following resources:
+Enable **Email** and **Google** under Supabase Authentication → Providers. Add your local and deployed URLs to Authentication → URL Configuration as redirect URLs, for example `http://localhost:3000/login`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Email sign-up asks for a username, email, and password. Google accounts receive a safe username from their email address, adding a short suffix if it is already taken. Each new account receives a personal `username's Scape` automatically.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The app sends data through its Next.js API routes. `SUPABASE_SERVICE_ROLE_KEY` stays server-only and must never be prefixed with `NEXT_PUBLIC_` or committed to Git.
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-=======
-# DeepScapes-app
-Unified Project Workspace.
->>>>>>> cd7293c0670a6b1ba4f4b52a71a3efe69a1fb7f3
+Without those variables, the prototype remains usable in local browser storage but does not sync data remotely.

@@ -1,6 +1,7 @@
 "use client";
 import { useSyncExternalStore } from "react";
 import { Scape, starterScapes } from "./mock-data";
+import { getBrowserSupabase } from "./supabase-browser";
 const key = "deepscapes-data";
 const changeEvent = "deepscapes-change";
 let cachedRaw: string | null | undefined;
@@ -32,16 +33,17 @@ export function addScape(next: Scape) {
 }
 export function newId(prefix: string) { return `${prefix}-${globalThis.crypto.randomUUID()}`; }
 export async function persistScape(scape: Scape) {
+  const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
   const response = await fetch("/api/scapes", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(scape),
   });
   if (!response.ok) throw new Error("DeepScapes could not save this change. Check your database connection and try again.");
 }
-export async function loadRemoteScapes() { const response = await fetch("/api/scapes").catch(() => undefined); if (!response?.ok) return []; const data = await response.json() as { scapes: Scape[] }; return data.scapes; }
+export async function loadRemoteScapes() { const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token; const response = await fetch("/api/scapes", { headers: token ? { Authorization: `Bearer ${token}` } : {} }).catch(() => undefined); if (!response?.ok) return []; const data = await response.json() as { scapes: Scape[] }; return data.scapes; }
 function subscribe(onStoreChange: () => void) { window.addEventListener(changeEvent, onStoreChange); return () => window.removeEventListener(changeEvent, onStoreChange); }
 const serverSnapshot: Scape[] = [];
 export function useScapes() { return useSyncExternalStore(subscribe, getScapes, () => serverSnapshot); }
 export function useScape(id: string) { const scapes = useScapes(); return scapes.find((scape) => scape.id === id); }
-export function deleteScape(id: string) { saveScapes(getScapes().filter((scape) => scape.id !== id)); void fetch(`/api/scapes?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => undefined); }
+export function deleteScape(id: string) { saveScapes(getScapes().filter((scape) => scape.id !== id)); void getBrowserSupabase()?.auth.getSession().then(({ data }) => fetch(`/api/scapes?id=${encodeURIComponent(id)}`, { method: "DELETE", headers: data.session?.access_token ? { Authorization: `Bearer ${data.session.access_token}` } : {} }).catch(() => undefined)); }

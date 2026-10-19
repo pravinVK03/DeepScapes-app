@@ -1,30 +1,17 @@
-import { Collection, MongoClient } from "mongodb";
-import { Scape, Template } from "./mock-data";
+import "server-only";
+import { createClient } from "@supabase/supabase-js";
 
-export type StoredScape = Scape & { createdAt: Date; updatedAt?: Date };
+const url = process.env.SUPABASE_URL;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const uri = process.env.MONGODB_URI;
-const databaseName = process.env.MONGODB_DB ?? "deepscapes";
-export const databaseEnabled = Boolean(uri);
+export const databaseEnabled = Boolean(url && serviceRoleKey);
 
-let clientPromise: Promise<MongoClient> | undefined;
+export function getSupabase() {
+  if (!url || !serviceRoleKey) {
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured");
+  }
 
-async function getClient() {
-  if (!uri) throw new Error("MONGODB_URI is not configured");
-  if (!clientPromise) clientPromise = new MongoClient(uri).connect();
-  return clientPromise;
-}
-
-export async function getScapesCollection(): Promise<Collection<StoredScape>> {
-  const mongo = await getClient();
-  const collection = mongo.db(databaseName).collection<StoredScape>("scapes");
-  await collection.createIndex({ id: 1 }, { unique: true });
-  return collection;
-}
-
-export async function getTemplatesCollection(): Promise<Collection<Template>> {
-  const mongo = await getClient();
-  const collection = mongo.db(databaseName).collection<Template>("templates");
-  await collection.createIndex({ name: 1 }, { unique: true });
-  return collection;
+  return createClient(url, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }

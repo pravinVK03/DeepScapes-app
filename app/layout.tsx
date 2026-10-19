@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
 import "./globals.css";
-
-const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
+import { AuthProvider } from "@/components/auth/auth-provider";
 
 export const metadata: Metadata = {
   title: "DeepScapes",
@@ -11,8 +9,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geist.variable} dark`}>
-      <body>{children}</body>
+    <html lang="en" className="dark">
+      <body><AuthProvider>{children}</AuthProvider></body>
     </html>
   );
 }

@@ -1,2 +1,3 @@
 import ResourceViewer from "@/components/resource/resource-viewer";
-export default function Page() { return <ResourceViewer />; }
+import { RequireAuth } from "@/components/auth/require-auth";
+export default function Page() { return <RequireAuth><ResourceViewer /></RequireAuth>; }

@@ -1,2 +1,3 @@
 import WorkspaceScreen from "@/components/scape/workspace-screen";
-export default function Page() { return <WorkspaceScreen />; }
+import { RequireAuth } from "@/components/auth/require-auth";
+export default function Page() { return <RequireAuth><WorkspaceScreen /></RequireAuth>; }
