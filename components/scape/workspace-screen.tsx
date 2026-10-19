@@ -58,7 +58,8 @@ function InScapeBrowser({ scapeId, onLog }: { scapeId: string; onLog: (records: 
     if (!token) { setOpening(false); setMessage("Sign in to open your private browser."); return; }
     const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 15_000);
     const response = await fetch("/api/browser/session", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId, target: input }), signal: controller.signal }).catch(() => undefined); window.clearTimeout(timeout);
-    const data = response ? await response.json() as { liveViewUrl?: string; error?: string; destination?: { url: string; label: string } } : undefined;
+    let data: { liveViewUrl?: string; error?: string; destination?: { url: string; label: string } } | undefined;
+    try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
     if (!response?.ok || !data?.liveViewUrl) { setOpening(false); setMessage(data?.error ?? "Could not start the remote browser."); return; }
     const records = [{ label: data.destination?.label ?? "Remote browser opened", url: data.destination?.url ?? data.liveViewUrl, time: new Date().toISOString() }, ...readWebLog(scapeId).filter((item) => item.url !== (data.destination?.url ?? data.liveViewUrl))];
     saveWebLog(scapeId, records); onLog(records); setLiveViewUrl(data.liveViewUrl); setOpening(false);

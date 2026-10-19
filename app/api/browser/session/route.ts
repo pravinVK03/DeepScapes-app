@@ -75,12 +75,21 @@ export async function POST(request: Request) {
     if (writeError) return Response.json({ error: "Could not prepare your private browser" }, { status: 500 });
   }
 
-  const session = await browserbase.sessions.create({
-    projectId: process.env.BROWSERBASE_PROJECT_ID,
-    api_timeout: 3600,
-    browserSettings: { context: { id: contextId, persist: true }, viewport: { width: 1440, height: 960 } },
-    userMetadata: { scapeId: scape.id, userId: user.id },
-  });
+  let session;
+  try {
+    session = await browserbase.sessions.create({
+      projectId: process.env.BROWSERBASE_PROJECT_ID,
+      api_timeout: 3600,
+      browserSettings: { context: { id: contextId, persist: true }, viewport: { width: 1440, height: 960 } },
+      userMetadata: { scapeId: scape.id, userId: user.id },
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "The remote browser service is unavailable.";
+    if (detail.includes("browser minutes limit reached")) {
+      return Response.json({ error: "Remote browsing is unavailable because the Browserbase free browser-minute limit has been reached. Add browser time or migrate this panel to Steel." }, { status: 402 });
+    }
+    return Response.json({ error: "The remote browser service could not start. Please try again shortly." }, { status: 502 });
+  }
   const start = destination(target);
   try {
     await openRemotePage(session.connectUrl, start.url);
