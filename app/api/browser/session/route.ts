@@ -66,9 +66,9 @@ export async function POST(request: Request) {
     const browser = await chromium.connectOverCDP(session.connectUrl);
     const context = browser.contexts()[0];
     const page = context.pages()[0] ?? await context.newPage();
-    await page.goto(start.url, { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await page.goto(start.url, { waitUntil: "domcontentloaded", timeout: 8_000 }).catch(() => undefined);
   } catch {
-    return Response.json({ error: "The remote browser started, but could not open that address." }, { status: 502 });
+    // The live view is still useful even if the browser service is slow to accept CDP.
   }
   const live = await browserbase.sessions.debug(session.id, { expiresIn: 3600 });
   return Response.json({ sessionId: session.id, liveViewUrl: live.debuggerFullscreenUrl, expiresAt: session.expiresAt, destination: start });
