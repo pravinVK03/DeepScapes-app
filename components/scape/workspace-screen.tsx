@@ -29,9 +29,13 @@ export default function WorkspaceScreen() {
   const params = useParams<{ id: string }>(); const router = useRouter(); const { user } = useAuth(); const scape = useScape(params.id);
   const [adding, setAdding] = useState<ResourceType | null>(null); const [editing, setEditing] = useState(false); const [focused, setFocused] = useState<ResourceType | null>(null); const [webLogs, setWebLogs] = useState<WebLog[]>([]);
   const done = useMemo(() => scape?.resources.filter((item) => item.type === "task" && item.done).length ?? 0, [scape]);
+  useEffect(() => {
+    if (!scape) return;
+    const timer = window.setTimeout(() => setWebLogs(readWebLog(scape.id)), 0);
+    return () => window.clearTimeout(timer);
+  }, [scape]);
   if (!scape) return <main className="min-h-screen"><AppHeader /><p className="mx-auto max-w-7xl px-5 py-12 text-sm text-[#718077]">This Scape is unavailable.</p></main>;
   const canEdit = scape.ownerId === user?.id || scape.collaborators?.some((person) => person.email === user?.email && person.permission === "edit") === true;
-  useEffect(() => setWebLogs(readWebLog(scape.id)), [scape.id]);
   const update = (next: Scape) => saveScape(next);
   function toggleTask(resource: Resource) { if (!canEdit) return; void update({ ...scape!, resources: scape!.resources.map((item) => item.id === resource.id ? { ...item, done: !item.done, detail: !item.done ? "Task · Complete" : "Task · In progress" } : item), activity: [log(resource.done ? "Task reopened" : "Task completed", resource.title), ...scape!.activity] }); }
   function toggleStar(resource: Resource) { if (!canEdit) return; void update({ ...scape!, resources: scape!.resources.map((item) => item.id === resource.id ? { ...item, starred: !item.starred } : item), activity: [log(resource.starred ? "Resource unstarred" : "Resource starred", resource.title), ...scape!.activity] }); }
