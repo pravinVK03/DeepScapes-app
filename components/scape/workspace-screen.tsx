@@ -10,6 +10,7 @@ import { Icon } from "@/components/ui/icons";
 import { Resource, ResourceType, Scape } from "@/lib/mock-data";
 import { deleteScape, newId, saveScape, useScape } from "@/lib/scape-store";
 import { useAuth } from "@/components/auth/auth-provider";
+import { getBrowserSupabase } from "@/lib/supabase-browser";
 
 const sections: { label: string; type: ResourceType; icon: string }[] = [
   { label: "Notes", type: "note", icon: "note" }, { label: "Tasks", type: "task", icon: "task" },
@@ -52,15 +53,18 @@ export default function WorkspaceScreen() {
 }
 
 function InScapeBrowser({ scapeId, onLog }: { scapeId: string; onLog: (records: WebLog[]) => void }) {
-  const [input, setInput] = useState(""); const [url, setUrl] = useState(""); const [searchUrl, setSearchUrl] = useState("");
-  function open() {
-    const value = input.trim(); if (!value) return;
-    const isUrl = /^https?:\/\//i.test(value) || (value.includes(".") && !value.includes(" "));
-    const target = /^https?:\/\//i.test(value) ? value : isUrl ? "https://" + value : "https://www.google.com/search?q=" + encodeURIComponent(value);
-    const records = [{ label: value, url: target, time: new Date().toISOString() }, ...readWebLog(scapeId).filter((item) => item.url !== target)];
-    saveWebLog(scapeId, records); onLog(records); setUrl(isUrl ? target : ""); setSearchUrl(isUrl ? "" : target);
+  const [liveViewUrl, setLiveViewUrl] = useState(""); const [opening, setOpening] = useState(false); const [message, setMessage] = useState("");
+  async function open() {
+    setOpening(true); setMessage("");
+    const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
+    if (!token) { setOpening(false); setMessage("Sign in to open your private browser."); return; }
+    const response = await fetch("/api/browser/session", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId }) }).catch(() => undefined);
+    const data = response ? await response.json() as { liveViewUrl?: string; error?: string } : undefined;
+    if (!response?.ok || !data?.liveViewUrl) { setOpening(false); setMessage(data?.error ?? "Could not start the remote browser."); return; }
+    const records = [{ label: "Remote browser opened", url: data.liveViewUrl, time: new Date().toISOString() }, ...readWebLog(scapeId).filter((item) => item.url !== data.liveViewUrl)];
+    saveWebLog(scapeId, records); onLog(records); setLiveViewUrl(data.liveViewUrl); setOpening(false);
   }
-  return <section className="overflow-hidden rounded-2xl border border-[#e5e8e2] bg-white"><div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><p className="min-w-0 flex-1 font-semibold">Browse</p><div className="flex gap-2"><input value={input} onChange={(item) => setInput(item.target.value)} onKeyDown={(item) => item.key === "Enter" && open()} placeholder="Search or paste a URL" className="min-w-0 rounded-lg border border-[#dce1d9] bg-white px-3 py-2 text-sm outline-none sm:w-64" /><button onClick={open} className="rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white">Open</button></div></div>{searchUrl && <div className="flex items-center justify-between border-t border-[#e5e8e2] px-4 py-3"><span className="text-sm">Search ready</span><a href={searchUrl} target="_blank" rel="noreferrer" className="rounded-lg border px-3 py-2 text-sm">Open results ↗</a></div>}{url && <div className="border-t border-[#e5e8e2]"><div className="flex items-center justify-between px-4 py-2 text-xs text-[#718077]"><span className="truncate">{url}</span><a href={url} target="_blank" rel="noreferrer" className="ml-3 shrink-0 hover:underline">Open tab ↗</a></div><iframe title="In-Scape browser" src={url} className="h-80 w-full border-0 bg-white" /></div>}</section>;
+  return <section className="overflow-hidden rounded-2xl border border-[#e5e8e2] bg-white"><div className="flex flex-wrap items-center justify-between gap-3 p-4"><p className="font-semibold">Browse</p><div className="flex items-center gap-2"><button onClick={open} disabled={opening} className="rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{opening ? "Starting…" : liveViewUrl ? "New session" : "Open browser"}</button>{liveViewUrl && <a href={liveViewUrl} target="_blank" rel="noreferrer" className="rounded-lg border px-3 py-2 text-sm">Full screen ↗</a>}</div></div>{message && <p className="border-t border-[#e5e8e2] px-4 py-3 text-sm text-[#718077]">{message}</p>}{liveViewUrl && <div className="border-t border-[#e5e8e2]"><iframe title="DeepScapes remote browser" src={liveViewUrl} className="h-[42rem] w-full border-0 bg-white" allow="clipboard-read; clipboard-write" /></div>}</section>;
 }
 
 function ResourceSection({ section, resources, scape, canEdit, onAdd, onToggle, onStar, onDelete, onMaximize }: { section: { label: string; type: ResourceType | "starred"; icon: string }; resources: Resource[]; scape: Scape; canEdit: boolean; onAdd: () => void; onToggle: (resource: Resource) => void; onStar: (resource: Resource) => void; onDelete: (resource: Resource) => void; onMaximize: () => void }) {
