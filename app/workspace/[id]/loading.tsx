@@ -1,2 +1,2 @@
 import { PageLoader } from "@/components/ui/page-loader";
-export default function Loading() { return <PageLoader label="Opening your Scape…" />; }
+export default function Loading() { return <PageLoader />; }
