@@ -10,18 +10,15 @@ export type FeedbackEmail = {
 };
 
 const recipient = process.env.FEEDBACK_TO_EMAIL?.trim() || "padmanathan.kdev@gmail.com";
-// This must stay a Resend-verified address. Submitter addresses are Reply-To values,
-// so feedback can come from any domain without impersonating that domain as a sender.
-const sender = process.env.FEEDBACK_FROM_EMAIL?.trim() || "DeepScapes Feedback <onboarding@resend.dev>";
+// This must stay a Resend-verified address. Feedback delivery is one-way; the
+// submitter is recorded in the message only and is never used as a sender or Reply-To.
+const onboardingSender = "DeepScapes Feedback <onboarding@resend.dev>";
+const sender = process.env.FEEDBACK_FROM_EMAIL?.trim() || onboardingSender;
 
 export type FeedbackDeliveryReason = "not_configured" | "invalid_api_key" | "sender_not_verified" | "recipient_restricted" | "rate_limited" | "provider_error";
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]!);
-}
-
-function replyTo(value?: string) {
-  return value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? value : undefined;
 }
 
 export async function sendFeedbackCopy(feedback: FeedbackEmail, origin: string) {
@@ -35,10 +32,10 @@ export async function sendFeedbackCopy(feedback: FeedbackEmail, origin: string) 
   const text = [`New DeepScapes feedback`, ``, `Category: ${category}`, `Rating: ${rating}`, `Submitted by: ${feedback.email || "Unknown"}`, `User ID: ${feedback.userId}`, `Submitted: ${submittedAt}`, pageUrl ? `Page: ${pageUrl}` : "", ``, feedback.message].filter(Boolean).join("\n");
   const html = `<div style="font-family:Arial,sans-serif;color:#17231d;line-height:1.55"><p style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#718077">DeepScapes feedback</p><h1 style="font-size:24px;margin:8px 0 24px">${escapeHtml(category)} feedback</h1><table style="border-collapse:collapse;font-size:14px"><tr><td style="padding:4px 18px 4px 0;color:#718077">Rating</td><td>${escapeHtml(rating)}</td></tr><tr><td style="padding:4px 18px 4px 0;color:#718077">Submitted by</td><td>${escapeHtml(feedback.email || "Unknown")}</td></tr><tr><td style="padding:4px 18px 4px 0;color:#718077">User ID</td><td>${escapeHtml(feedback.userId)}</td></tr><tr><td style="padding:4px 18px 4px 0;color:#718077">Submitted</td><td>${escapeHtml(submittedAt)}</td></tr>${pageUrl ? `<tr><td style="padding:4px 18px 4px 0;color:#718077">Page</td><td><a href="${escapeHtml(pageUrl)}">${escapeHtml(pageUrl)}</a></td></tr>` : ""}</table><div style="margin-top:24px;padding:18px;border:1px solid #e5e8e2;border-radius:12px;background:#f7f7f3;white-space:pre-wrap">${escapeHtml(feedback.message)}</div></div>`;
 
-  const send = () => fetch("https://api.resend.com/emails", {
+  const send = (from = sender) => fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "Idempotency-Key": `feedback/${feedback.id}` },
-      body: JSON.stringify({ from: sender, to: [recipient], ...(replyTo(feedback.email) ? { reply_to: replyTo(feedback.email) } : {}), subject: `[DeepScapes] ${category} feedback · ${rating}`, text, html, tags: [{ name: "category", value: feedback.category }] }),
+      body: JSON.stringify({ from, to: [recipient], subject: `[DeepScapes] ${category} feedback · ${rating}`, text, html, tags: [{ name: "category", value: feedback.category }] }),
       signal: AbortSignal.timeout(8_000),
     });
 
@@ -49,8 +46,18 @@ export async function sendFeedbackCopy(feedback: FeedbackEmail, origin: string) 
       response = await send();
     }
     if (!response.ok) {
-      const body = await response.json().catch(() => undefined) as { message?: string; name?: string } | undefined;
-      const providerMessage = body?.message || "";
+      let body = await response.json().catch(() => undefined) as { message?: string; name?: string } | undefined;
+      let providerMessage = body?.message || "";
+      const senderRejected = /verify|domain|from address|sender/i.test(providerMessage);
+      if (senderRejected && sender !== onboardingSender) {
+        response = await send(onboardingSender);
+        if (response.ok) {
+          const fallbackBody = await response.json().catch(() => undefined) as { id?: string } | undefined;
+          return { sent: true as const, id: fallbackBody?.id };
+        }
+        body = await response.json().catch(() => undefined) as { message?: string; name?: string } | undefined;
+        providerMessage = body?.message || "";
+      }
       const reason: FeedbackDeliveryReason = response.status === 401
         ? "invalid_api_key"
         : response.status === 429
