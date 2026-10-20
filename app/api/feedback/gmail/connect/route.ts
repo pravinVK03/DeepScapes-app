@@ -7,6 +7,15 @@ export const runtime = "nodejs";
 
 const stateCookie = "deepscapes_gmail_feedback_state";
 
+export async function GET(request: Request) {
+  if (!databaseEnabled) return Response.json({ owner: false, configured: false });
+  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  if (!token) return Response.json({ owner: false, configured: Boolean(gmailConfig()) });
+  const { data } = await getSupabase().auth.getUser(token);
+  const owner = Boolean(data.user?.email && data.user.email.toLowerCase() === feedbackRecipient.toLowerCase());
+  return Response.json({ owner, configured: Boolean(gmailConfig()) });
+}
+
 export async function POST(request: Request) {
   if (!databaseEnabled) return Response.json({ error: "Feedback storage is unavailable." }, { status: 503 });
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");

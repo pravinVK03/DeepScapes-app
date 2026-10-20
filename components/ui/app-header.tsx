@@ -10,12 +10,12 @@ import { Icon } from "./icons";
 
 interface NavItem { label: string; href: string; }
 const navItems: NavItem[] = [];
-const feedbackInbox = "padmanathan.kdev@gmail.com";
 
 export function AppHeader({ compact = false }: { compact?: boolean }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [gmailMessage, setGmailMessage] = useState("");
   const [connectingGmail, setConnectingGmail] = useState(false);
+  const [canConnectGmail, setCanConnectGmail] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark" | "system">(() => {
     if (typeof window === "undefined") return "dark";
     const stored = window.localStorage.getItem("deepscapes-theme");
@@ -25,7 +25,6 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
   const pathname = usePathname();
   const { user, loading, signOut } = useAuth();
   const username = typeof user?.user_metadata.username === "string" ? user.user_metadata.username : user?.email?.split("@")[0];
-  const ownsFeedbackInbox = user?.email?.toLowerCase() === feedbackInbox;
 
   useEffect(() => {
     if (!profileOpen) return;
@@ -35,6 +34,18 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
     document.addEventListener("keydown", dismissWithKeyboard);
     return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", dismissWithKeyboard); };
   }, [profileOpen]);
+
+  useEffect(() => {
+    if (!profileOpen || !user) { setCanConnectGmail(false); return; }
+    let active = true;
+    void (async () => {
+      const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
+      const response = await fetch("/api/feedback/gmail/connect", { headers: token ? { Authorization: `Bearer ${token}` } : {} }).catch(() => undefined);
+      const data = await response?.json().catch(() => undefined) as { owner?: boolean } | undefined;
+      if (active) setCanConnectGmail(Boolean(data?.owner));
+    })();
+    return () => { active = false; };
+  }, [profileOpen, user]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -83,7 +94,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
               <div className="border-b border-[#e5e8e2] px-3 py-2"><p className="truncate text-sm font-medium">{username}</p><p className="truncate text-xs text-[#718077]">{user.email}</p></div>
               <Link onClick={() => setProfileOpen(false)} href="/scapes" className="block rounded-lg px-3 py-2 text-sm hover:bg-[#edf0df]">Your Scapes</Link>
               <Link onClick={() => setProfileOpen(false)} href="/create" className="block rounded-lg px-3 py-2 text-sm hover:bg-[#edf0df]">Create Scape</Link>
-              {ownsFeedbackInbox && <div className="mx-2 my-1 border-t border-[#e5e8e2] pt-1">
+              {canConnectGmail && <div className="mx-2 my-1 border-t border-[#e5e8e2] pt-1">
                 <button type="button" onClick={() => void connectGmail()} disabled={connectingGmail} className="block w-full rounded-lg px-2 py-2 text-left text-sm hover:bg-[#edf0df] disabled:opacity-50">{connectingGmail ? "Opening Gmail…" : "Connect feedback inbox"}</button>
                 {gmailMessage && <p className="px-2 pb-2 text-xs text-[#a95b54]">{gmailMessage}</p>}
               </div>}
