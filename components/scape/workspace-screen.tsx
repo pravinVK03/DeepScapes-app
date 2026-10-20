@@ -89,7 +89,7 @@ export default function WorkspaceScreen() {
   return <main className="min-h-screen"><AppHeader /><section className="mx-auto max-w-7xl px-5 pb-12 pt-6 sm:px-8">
     <Link href="/scapes" className="inline-flex items-center gap-2 text-sm text-[#718077] hover:text-[#17231d]"><Icon name="back" className="h-4 w-4" />All Scapes</Link>
     <div className="workspace-cover mt-5 rounded-[1.75rem] p-6 sm:p-8" style={cover}><p className="text-sm">{scape.template}</p><div className="mt-5 flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><h1 className="text-4xl font-medium tracking-[-.06em] sm:text-5xl">{scape.title}</h1>{scape.description && <p className="mt-3 max-w-xl leading-6">{scape.description}</p>}</div>{canEdit && <button onClick={() => setEditing(true)} className="rounded-lg border px-3 py-2 text-sm">Edit</button>}</div></div>
-    <div className="mt-7 grid gap-7 xl:grid-cols-[minmax(0,1fr)_290px]"><div><InScapeBrowser scape={scape} resumeRequest={resumeRequest} onBrowserChange={(browser) => { setWebLogs(browser.activity || []); void update({ ...scape, browser }); }} /><div className="mb-5 mt-8 flex items-center justify-between"><div><p className="text-xs font-medium uppercase tracking-[.16em] text-[#718077]">Project contents</p><h2 className="mt-1 text-2xl font-semibold tracking-[-.04em]">Everything in one place.</h2></div>{canEdit && <button onClick={() => setAdding("file")} className="inline-flex items-center gap-2 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white"><Icon name="plus" className="h-4 w-4" />Add</button>}</div><div className="grid gap-x-8 gap-y-6 md:grid-cols-2">{sections.map((section) => <ResourceSection key={section.type} section={section} resources={scape.resources.filter((item) => item.type === section.type)} scape={scape} canEdit={canEdit} onAdd={() => setAdding(section.type)} onToggle={toggleTask} onStar={toggleStar} onDelete={removeResource} onMaximize={() => setFocused(section.type)} />)}</div></div>
+    <div className="mt-7 grid gap-7 xl:grid-cols-[minmax(0,1fr)_290px]"><div><InScapeBrowser key={scape.id} scape={scape} resumeRequest={resumeRequest} onBrowserChange={(browser) => { setWebLogs(browser.activity || []); void update({ ...scape, browser }); }} /><div className="mb-5 mt-8 flex items-center justify-between"><div><p className="text-xs font-medium uppercase tracking-[.16em] text-[#718077]">Project contents</p><h2 className="mt-1 text-2xl font-semibold tracking-[-.04em]">Everything in one place.</h2></div>{canEdit && <button onClick={() => setAdding("file")} className="inline-flex items-center gap-2 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white"><Icon name="plus" className="h-4 w-4" />Add</button>}</div><div className="grid gap-x-8 gap-y-6 md:grid-cols-2">{sections.map((section) => <ResourceSection key={section.type} section={section} resources={scape.resources.filter((item) => item.type === section.type)} scape={scape} canEdit={canEdit} onAdd={() => setAdding(section.type)} onToggle={toggleTask} onStar={toggleStar} onDelete={removeResource} onMaximize={() => setFocused(section.type)} />)}</div></div>
       <aside className="space-y-4 xl:sticky xl:top-5 xl:self-start"><Link href={"/timeline/" + scape.id} className="block rounded-2xl bg-[#315443] p-5 text-white"><span className="text-sm text-white/70">Resume this Scape</span><p className="mt-4 font-serif text-xl">{scape.resources[0]?.title ?? "Add your first resource"}</p><span className="mt-3 inline-block text-sm">Open activity →</span></Link><div className="rounded-2xl border border-[#e5e8e2] bg-white p-5"><div className="flex items-center justify-between"><h2 className="font-semibold">Activity</h2><Link href={"/timeline/" + scape.id} className="text-xs text-[#718077]">View all</Link></div><div className="mt-4 space-y-4">{scape.activity.slice(0, 4).map((item) => <div className="flex gap-3" key={item.id}><span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#a7bf97]" /><div className="min-w-0"><p className="text-sm">{item.action}</p><p className="mt-0.5 truncate text-xs text-[#718077]">{item.detail} · {relative(item.time)}</p></div></div>)}</div></div><div className="rounded-2xl border border-[#e5e8e2] bg-white p-5"><div className="flex items-center justify-between"><div><h2 className="font-semibold">Web activity</h2><p className="mt-0.5 text-xs text-[#8b968e]">{browserSessions.length} session{browserSessions.length === 1 ? "" : "s"}</p></div>{browserSessions.length > 0 && <button onClick={() => setWebActivityOpen(true)} className="text-xs text-[#718077]">View all</button>}</div><div className="mt-4 space-y-2">{browserSessions.length ? browserSessions.slice(0, 3).map((session) => <WebSessionDisclosure key={session.id} session={session} compact onResume={resumeSession} />) : <p className="text-sm text-[#718077]">No web activity yet.</p>}</div></div><div className="rounded-2xl border border-[#e5e8e2] bg-[#f0f3eb] p-5"><p className="text-xs uppercase tracking-[.14em] text-[#718077]">Tasks</p><p className="mt-2 text-sm">{done} complete · {scape.resources.filter((item) => item.type === "task").length} total</p></div></aside>
     </div></section>{adding && <AddResource scape={scape} initialType={adding} close={() => setAdding(null)} onAdded={(resource) => showNotice(`${resource.title} added to this Scape`)} onPersistError={() => showNotice("Resource added on this device, but cloud sync failed. Retry when connected.", "error")} />}{editing && <ScapeEditor scape={scape} close={() => setEditing(false)} save={update} canDelete={scape.ownerId === user?.id} />}{focused && <FocusedSection label={sections.find((section) => section.type === focused)!.label} resources={scape.resources.filter((item) => item.type === focused)} scape={scape} canEdit={canEdit} close={() => setFocused(null)} onToggle={toggleTask} onStar={toggleStar} onDelete={removeResource} />}{webActivityOpen && <WebActivity sessions={browserSessions} close={() => setWebActivityOpen(false)} onResume={resumeSession} />}{resumeChoice && <ResumeSessionChoice session={resumeChoice} close={() => setResumeChoice(undefined)} choose={continueSession} />}{notice && <div role="status" aria-live="polite" className={`fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full px-4 py-3 text-sm font-medium text-white shadow-xl ${notice.tone === "error" ? "bg-[#9f4f47]" : "bg-[#315443]"}`}><span className="grid h-5 w-5 place-items-center rounded-full bg-white/20">{notice.tone === "error" ? "!" : "✓"}</span>{notice.text}</div>}</main>;
 }
@@ -99,7 +99,7 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
   const [input, setInput] = useState(scape.browser?.lastTarget || "");
   const [sessionName, setSessionName] = useState(scape.browser?.activeSessionName || "");
   const [opening, setOpening] = useState(false); const [ending, setEnding] = useState(false); const [message, setMessage] = useState("");
-  const [fullScreen, setFullScreen] = useState(false); const [paused, setPaused] = useState(false); const [viewerKey, setViewerKey] = useState(0); const [disconnected, setDisconnected] = useState(false);
+  const [fullScreen, setFullScreen] = useState(false); const [paused, setPaused] = useState(false); const [viewerOpen, setViewerOpen] = useState(false); const [viewerKey, setViewerKey] = useState(0); const [disconnected, setDisconnected] = useState(false);
   const sessionId = scape.browser?.activeSessionId;
   const browserRef = useRef(scape.browser); const onBrowserChangeRef = useRef(onBrowserChange); const resumedRequestRef = useRef<string | undefined>(undefined); const checkpointFailuresRef = useRef(0); const releaseActiveRef = useRef<() => Promise<BrowserSessionSnapshot | false>>(async () => false); const startSessionRef = useRef<(target: string, request?: ResumeRequest) => Promise<void>>(async () => undefined);
   useEffect(() => { browserRef.current = scape.browser; onBrowserChangeRef.current = onBrowserChange; }, [onBrowserChange, scape.browser]);
@@ -124,7 +124,7 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     if (save && (merged.length !== current.length || (lastUrl && lastUrl !== browserRef.current?.lastUrl))) persist({ activity: merged, lastUrl });
     return merged;
   }, [persist, scape.id, sessionId]);
-  useEffect(() => { if (!sessionId) return; void syncActivity(); const timer = window.setInterval(() => void syncActivity(), 30_000); return () => window.clearInterval(timer); }, [sessionId, syncActivity]);
+  useEffect(() => { if (!sessionId || !viewerOpen) return; void syncActivity(); const timer = window.setInterval(() => void syncActivity(), 30_000); return () => window.clearInterval(timer); }, [sessionId, syncActivity, viewerOpen]);
   const checkpoint = useCallback(async () => {
     if (!sessionId || ending) return;
     const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token; if (!token) return;
@@ -139,13 +139,13 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     persist({ sessions: { ...(browserRef.current?.sessions || {}), [sessionId]: data.snapshot } });
   }, [ending, persist, scape.id, sessionId, sessionName]);
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !viewerOpen) return;
     const first = window.setTimeout(() => void checkpoint(), 12_000);
     const timer = window.setInterval(() => void checkpoint(), 90_000);
     const onVisibility = () => { if (document.visibilityState === "hidden") void checkpoint(); };
     document.addEventListener("visibilitychange", onVisibility);
     return () => { window.clearTimeout(first); window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
-  }, [checkpoint, sessionId]);
+  }, [checkpoint, sessionId, viewerOpen]);
   function saveSessionName() {
     if (!sessionId) return;
     const name = sessionName.trim() || "Browsing session";
@@ -166,7 +166,7 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     const snapshot = data?.snapshot || browserRef.current?.sessions?.[sessionId] || { sessionId, name: sessionName.trim() || browserRef.current?.activeSessionName || "Browsing session", capturedAt: new Date().toISOString(), tabs: browserRef.current?.lastUrl ? [{ url: browserRef.current.lastUrl, active: true }] : [] };
     const ended: WebLog = { id: `session-ended-${sessionId}`, type: "session ended", time: snapshot.capturedAt, target: snapshot.name, detail: `${snapshot.tabs.length} tab${snapshot.tabs.length === 1 ? "" : "s"} and browser state saved`, sessionId };
     persist({ activeSessionId: undefined, activeSessionName: undefined, liveViewUrl: undefined, expiresAt: undefined, lastTarget: undefined, lastUrl: undefined, sessions: { ...(browserRef.current?.sessions || {}), [sessionId]: snapshot }, activity: [ended, ...activity.filter((item) => item.id !== ended.id)] });
-    setLiveViewUrl(""); setInput(""); setSessionName(""); setPaused(false); setFullScreen(false); setDisconnected(false); setEnding(false); setMessage("Session saved. The browser is clear."); return snapshot;
+    setLiveViewUrl(""); setInput(""); setSessionName(""); setPaused(false); setViewerOpen(false); setFullScreen(false); setDisconnected(false); setEnding(false); setMessage("Session saved. The browser is clear."); return snapshot;
   }
   async function startSession(target: string, request?: ResumeRequest) {
     setOpening(true); setMessage("");
@@ -181,7 +181,7 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     const activeTab = request?.snapshot.tabs[request.snapshot.activeTab ?? 0] || request?.snapshot.tabs.find((tab) => tab.active);
     const event: WebLog = { id: `session-${data.sessionId}`, type: request ? `session ${request.mode}d` : "session started", time: new Date().toISOString(), url: activeTab?.url || data.destination?.url, target: data.sessionName || name, detail: request ? `${request.snapshot.tabs.length} saved tab${request.snapshot.tabs.length === 1 ? "" : "s"} reconstructed from ${request.snapshot.sessionId.slice(0, 8)}` : "Remote browser opened", sessionId: data.sessionId || "" };
     persist({ activeSessionId: data.sessionId, activeSessionName: data.sessionName || name, profileId: data.profileId, liveViewUrl: data.liveViewUrl, expiresAt: data.expiresAt, lastTarget: target, lastUrl: activeTab?.url || data.destination?.url, activity: [event, ...(browserRef.current?.activity || [])] });
-    checkpointFailuresRef.current = 0; setDisconnected(false); setSessionName(data.sessionName || name); setLiveViewUrl(data.liveViewUrl); setViewerKey((value) => value + 1); setOpening(false); setMessage(request ? `${request.snapshot.tabs.length} saved tabs restored.` : "");
+    checkpointFailuresRef.current = 0; setDisconnected(false); setSessionName(data.sessionName || name); setLiveViewUrl(data.liveViewUrl); setViewerOpen(true); setViewerKey((value) => value + 1); setOpening(false); setMessage(request ? `${request.snapshot.tabs.length} saved tabs restored.` : "");
   }
   async function open(targetOverride?: string) {
     const target = targetOverride ?? input;
@@ -195,11 +195,11 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     let data: { error?: string; destination?: { url: string; label: string } } | undefined; try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
     if (!response?.ok) { setOpening(false); setMessage(data?.error || "The browser disconnected. Use Reconnect, or save and restore the session."); return; }
     const event: WebLog = { id: `navigate-${sessionId}-${Date.now()}`, type: "navigate", time: new Date().toISOString(), url: data?.destination?.url, target: data?.destination?.label, detail: "Opened in the current browser session", sessionId };
-    persist({ lastTarget: target, lastUrl: data?.destination?.url, activity: [event, ...(browserRef.current?.activity || [])] }); setOpening(false); setMessage("");
+    persist({ lastTarget: target, lastUrl: data?.destination?.url, activity: [event, ...(browserRef.current?.activity || [])] }); setViewerOpen(true); setViewerKey((value) => value + 1); setOpening(false); setMessage("");
   }
   async function reconnect() {
     if (!sessionId) return;
-    if (!disconnected) { setViewerKey((value) => value + 1); setMessage("Reconnecting to the same live session…"); return; }
+    if (!disconnected) { setViewerOpen(true); setViewerKey((value) => value + 1); setMessage("Reconnecting to the same live session…"); return; }
     const saved = browserRef.current?.sessions?.[sessionId];
     if (!saved?.tabs.length) { setMessage("No recovery checkpoint is available for this session."); return; }
     const endedSnapshot = await releaseActive(); if (!endedSnapshot) return;
@@ -219,7 +219,7 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     void begin();
   }, [resumeRequest, sessionId]);
   useEffect(() => {
-    if (!sessionId || !scape.browser?.expiresAt) return;
+    if (!sessionId || !scape.browser?.expiresAt || !viewerOpen) return;
     const remaining = new Date(scape.browser.expiresAt).getTime() - Date.now() - 45_000;
     if (remaining <= 0) { const timer = window.setTimeout(() => setDisconnected(true), 0); return () => window.clearTimeout(timer); }
     const timer = window.setTimeout(async () => {
@@ -230,17 +230,20 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
       await startSessionRef.current(activeTab?.url || "", { key: crypto.randomUUID(), mode: "resume", name: saved.name, snapshot: saved });
     }, remaining);
     return () => window.clearTimeout(timer);
-  }, [scape.browser?.expiresAt, sessionId]);
+  }, [scape.browser?.expiresAt, sessionId, viewerOpen]);
   const shell = fullScreen ? "fixed inset-0 z-[70] flex h-screen flex-col rounded-none border-0 bg-white" : "scroll-mt-5 overflow-hidden rounded-2xl border border-[#e5e8e2] bg-white";
   return <section id="scape-browser" className={shell}>
     <div className="flex flex-wrap items-center gap-2 border-b border-[#e5e8e2] p-3 sm:p-4">
       <div className="mr-auto min-w-[10rem]"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#718077]">Browse</p><input value={sessionName} onChange={(event) => setSessionName(event.target.value)} onBlur={saveSessionName} placeholder="Name this session" className="mt-0.5 w-full bg-transparent text-sm font-semibold outline-none placeholder:text-[#9aa39d]" aria-label="Browser session name" /></div>
       <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && !opening && !ending && void open()} placeholder="Search the web or enter a website" className="min-w-0 flex-1 rounded-lg border border-[#dce1d9] bg-white px-3 py-2 text-sm outline-none sm:max-w-sm" />
       <button onClick={() => void open()} disabled={opening || ending} className="shrink-0 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{opening ? "Opening…" : liveViewUrl ? "Go" : "Open"}</button>
-      {liveViewUrl && <><button onClick={() => setPaused((value) => !value)} disabled={ending} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{paused ? "Resume view" : "Pause"}</button><button onClick={() => void reconnect()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{disconnected ? "Restore" : "Reconnect"}</button><button onClick={() => void releaseActive()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{ending ? "Saving…" : "Save & end"}</button><button onClick={() => setFullScreen((value) => !value)} className="shrink-0 rounded-lg border px-3 py-2 text-sm">{fullScreen ? "Exit full screen" : "Full screen"}</button></>}
+      {liveViewUrl && !viewerOpen && <button onClick={() => { setViewerOpen(true); setViewerKey((value) => value + 1); setMessage("Connecting to your saved browser session…"); }} disabled={ending} className="shrink-0 rounded-lg border border-[#315443] px-3 py-2 text-sm font-medium text-[#315443] disabled:opacity-60">Continue session</button>}
+      {liveViewUrl && viewerOpen && <><button onClick={() => setPaused((value) => !value)} disabled={ending} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{paused ? "Resume view" : "Pause"}</button><button onClick={() => void reconnect()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{disconnected ? "Restore" : "Reconnect"}</button><button onClick={() => setFullScreen((value) => !value)} className="shrink-0 rounded-lg border px-3 py-2 text-sm">{fullScreen ? "Exit full screen" : "Full screen"}</button></>}
+      {liveViewUrl && <button onClick={() => void releaseActive()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{ending ? "Saving…" : "Save & end"}</button>}
     </div>
     {message && <p role="status" aria-live="polite" className="border-b border-[#e5e8e2] px-4 py-2 text-sm text-[#718077]">{message}</p>}
-    {liveViewUrl && <div className={`relative border-t border-[#e5e8e2] ${fullScreen ? "min-h-0 flex-1" : ""}`}><iframe key={viewerKey} title="DeepScapes remote browser" src={liveViewUrl} loading="eager" onLoad={() => setMessage("")} className={`${fullScreen ? "h-full min-h-[30rem]" : "h-[42rem]"} w-full border-0 bg-white ${paused ? "pointer-events-none opacity-70" : ""}`} allow="clipboard-read; clipboard-write" />{paused && <div className="absolute inset-0 grid place-items-center bg-white/45 backdrop-blur-[1px]"><button onClick={() => setPaused(false)} className="rounded-full bg-[#315443] px-5 py-3 text-sm font-medium text-white shadow-lg">Resume browsing</button></div>}</div>}
+    {liveViewUrl && !viewerOpen && <div className="grid min-h-56 place-items-center border-t border-[#e5e8e2] bg-[#f7f8f4] px-5 py-10 text-center"><div><p className="font-medium text-[#34443a]">Browser ready when you are</p><p className="mt-1 text-sm text-[#718077]">This saved session will not connect or use browser resources until you open it.</p><button onClick={() => { setViewerOpen(true); setViewerKey((value) => value + 1); setMessage("Connecting to your saved browser session…"); }} className="mt-4 rounded-lg bg-[#315443] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#243f32]">Continue session</button></div></div>}
+    {liveViewUrl && viewerOpen && <div className={`relative border-t border-[#e5e8e2] ${fullScreen ? "min-h-0 flex-1" : ""}`}><iframe key={viewerKey} title="DeepScapes remote browser" src={liveViewUrl} loading="eager" onLoad={() => setMessage("")} className={`${fullScreen ? "h-full min-h-[30rem]" : "h-[42rem]"} w-full border-0 bg-white ${paused ? "pointer-events-none opacity-70" : ""}`} allow="clipboard-read; clipboard-write" />{paused && <div className="absolute inset-0 grid place-items-center bg-white/45 backdrop-blur-[1px]"><button onClick={() => setPaused(false)} className="rounded-full bg-[#315443] px-5 py-3 text-sm font-medium text-white shadow-lg">Resume browsing</button></div>}</div>}
   </section>;
 }
 
