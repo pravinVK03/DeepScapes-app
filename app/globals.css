@@ -85,3 +85,26 @@ html.dark .profile-trigger[aria-expanded="true"] {
 html.dark .profile-trigger > span:last-child { color: #f5f5f5 !important; }
 html.dark .resource-item:hover { background: #262626 !important; border-color: #5a5a5a !important; }
 
+.feedback-category[data-active="true"],
+html.dark .feedback-category[data-active="true"] {
+  background: #d4af37 !important;
+  border-color: #d4af37 !important;
+  color: #111 !important;
+  box-shadow: 0 0 20px rgb(212 175 55 / .22);
+}
+
+.feedback-star svg {
+  fill: rgb(255 255 255 / .28);
+  filter: none;
+}
+
+.feedback-star:hover svg,
+.feedback-star:focus-visible svg,
+.feedback-star[data-active="true"] svg,
+html.dark .feedback-star:hover svg,
+html.dark .feedback-star:focus-visible svg,
+html.dark .feedback-star[data-active="true"] svg {
+  fill: #d4af37 !important;
+  filter: drop-shadow(0 0 7px rgb(212 175 55 / .42));
+}
+
