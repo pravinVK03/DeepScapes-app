@@ -1,8 +1,9 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
-import { BrowserActivity, Scape } from "@/lib/mock-data";
+import { BrowserActivity, BrowserSessionSnapshot, BrowserTabSnapshot, Scape } from "@/lib/mock-data";
 import { rateLimit, rateLimited } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 async function currentUser(request: Request) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -24,25 +25,96 @@ function destination(value?: string) {
   return { url: "https://www.google.com/search?q=" + encodeURIComponent(input), label: input };
 }
 
-async function openRemotePage(connectUrl: string, url: string) {
+type CdpResult<T = unknown> = { id?: number; result?: T; error?: { message?: string }; sessionId?: string };
+
+async function withCdp<T>(connectUrl: string, work: (send: <R = unknown>(method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<R>) => Promise<T>) {
   const socket = new WebSocket(connectUrl);
   await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("CDP connection timed out")), 3_500);
+    const timeout = setTimeout(() => reject(new Error("CDP connection timed out")), 8_000);
     socket.addEventListener("open", () => { clearTimeout(timeout); resolve(); }, { once: true });
     socket.addEventListener("error", () => { clearTimeout(timeout); reject(new Error("CDP connection failed")); }, { once: true });
   });
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("Navigation timed out")), 3_500);
-    socket.addEventListener("message", (event) => {
-      const message = JSON.parse(String(event.data)) as { id?: number; error?: unknown };
-      if (message.id !== 1) return;
-      clearTimeout(timeout);
-      if (message.error) reject(new Error("Remote browser rejected navigation"));
-      else resolve();
-    });
-    socket.send(JSON.stringify({ id: 1, method: "Target.createTarget", params: { url } }));
+  let sequence = 0;
+  const pending = new Map<number, { resolve: (value: unknown) => void; reject: (reason: Error) => void; timeout: ReturnType<typeof setTimeout> }>();
+  socket.addEventListener("message", (event) => {
+    let message: CdpResult;
+    try { message = JSON.parse(String(event.data)) as CdpResult; } catch { return; }
+    if (!message.id) return;
+    const request = pending.get(message.id);
+    if (!request) return;
+    clearTimeout(request.timeout); pending.delete(message.id);
+    if (message.error) request.reject(new Error(message.error.message || "Remote browser command failed"));
+    else request.resolve(message.result);
   });
-  socket.close();
+  const send = <R,>(method: string, params: Record<string, unknown> = {}, sessionId?: string) => new Promise<R>((resolve, reject) => {
+    const id = ++sequence;
+    const timeout = setTimeout(() => { pending.delete(id); reject(new Error(`${method} timed out`)); }, 12_000);
+    pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timeout });
+    socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+  });
+  try { return await work(send); } finally {
+    for (const request of pending.values()) { clearTimeout(request.timeout); request.reject(new Error("CDP connection closed")); }
+    pending.clear(); socket.close();
+  }
+}
+
+async function openRemotePages(connectUrl: string, tabs: BrowserTabSnapshot[]) {
+  const pages = tabs.filter((tab) => /^https?:\/\//i.test(tab.url)).slice(0, 20);
+  if (!pages.length) return;
+  await withCdp(connectUrl, async (send) => {
+    const before = await send<{ targetInfos?: { targetId: string; type: string; url: string }[] }>("Target.getTargets");
+    const emptyTargets = (before.targetInfos || []).filter((item) => item.type === "page" && (item.url === "about:blank" || !item.url));
+    for (const tab of pages) {
+      const created = await send<{ targetId?: string }>("Target.createTarget", { url: tab.url });
+      if (!created.targetId || (!tab.active && !tab.scrollX && !tab.scrollY && !tab.fields?.length)) continue;
+      const attached = await send<{ sessionId?: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
+      if (!attached.sessionId) continue;
+      if (tab.scrollX || tab.scrollY || tab.fields?.length) {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        const state = JSON.stringify({ scrollX: tab.scrollX || 0, scrollY: tab.scrollY || 0, fields: tab.fields || [] });
+        const expression = `(() => { const state = ${state}; scrollTo(state.scrollX, state.scrollY); for (const field of state.fields) { const node = document.querySelector(field.selector); if (!node) continue; if (typeof field.checked === 'boolean') node.checked = field.checked; if (typeof field.selectedIndex === 'number') node.selectedIndex = field.selectedIndex; if (typeof field.value === 'string') node.value = field.value; node.dispatchEvent(new Event('input', { bubbles: true })); node.dispatchEvent(new Event('change', { bubbles: true })); } })()`;
+        await send("Runtime.evaluate", { expression }, attached.sessionId).catch(() => undefined);
+      }
+      if (tab.active) await send("Page.bringToFront", {}, attached.sessionId).catch(() => undefined);
+    }
+    for (const target of emptyTargets) await send("Target.closeTarget", { targetId: target.targetId }).catch(() => undefined);
+  });
+}
+
+async function navigateRemotePage(connectUrl: string, url: string, activeUrl?: string) {
+  await withCdp(connectUrl, async (send) => {
+    const targets = await send<{ targetInfos?: { targetId: string; type: string; url: string }[] }>("Target.getTargets");
+    const pages = (targets.targetInfos || []).filter((item) => item.type === "page" && !item.url.startsWith("devtools://"));
+    const current = pages.find((page) => activeUrl && page.url === activeUrl) || pages.at(-1);
+    if (!current) { await send("Target.createTarget", { url }); return; }
+    const attached = await send<{ sessionId?: string }>("Target.attachToTarget", { targetId: current.targetId, flatten: true });
+    if (!attached.sessionId) { await send("Target.createTarget", { url }); return; }
+    await send("Page.navigate", { url }, attached.sessionId);
+    await send("Page.bringToFront", {}, attached.sessionId).catch(() => undefined);
+  });
+}
+
+async function captureRemoteSession(connectUrl: string, sessionId: string, name: string, activeUrl?: string): Promise<BrowserSessionSnapshot> {
+  return withCdp(connectUrl, async (send) => {
+    const targets = await send<{ targetInfos?: { targetId: string; type: string; url: string; title?: string }[] }>("Target.getTargets");
+    const pages = (targets.targetInfos || []).filter((item) => item.type === "page" && /^https?:\/\//i.test(item.url)).slice(0, 20);
+    const tabs: BrowserTabSnapshot[] = [];
+    for (const page of pages) {
+      const tab: BrowserTabSnapshot = { url: page.url, title: page.title, active: Boolean(activeUrl && page.url === activeUrl) };
+      try {
+        const attached = await send<{ sessionId?: string }>("Target.attachToTarget", { targetId: page.targetId, flatten: true });
+        if (attached.sessionId) {
+          const expression = `(() => { const sensitive = /pass|secret|token|card|cc-|otp|one-time/i; const esc = (value) => CSS.escape(String(value)); const selector = (node) => node.id ? '#' + esc(node.id) : node.name ? node.tagName.toLowerCase() + '[name="' + String(node.name).replace(/["\\]/g, '\\$&') + '"]' : ''; return { scrollX, scrollY, fields: Array.from(document.querySelectorAll('input, textarea, select')).map((node) => { const key = selector(node); const type = String(node.type || '').toLowerCase(); const autocomplete = String(node.autocomplete || ''); if (!key || type === 'password' || sensitive.test(node.name || '') || sensitive.test(autocomplete)) return null; return { selector: key, value: type === 'checkbox' || type === 'radio' ? undefined : String(node.value || '').slice(0, 2000), checked: type === 'checkbox' || type === 'radio' ? Boolean(node.checked) : undefined, selectedIndex: node.tagName === 'SELECT' ? node.selectedIndex : undefined }; }).filter(Boolean).slice(0, 100) }; })()`;
+          const evaluated = await send<{ result?: { value?: { scrollX?: number; scrollY?: number; fields?: BrowserTabSnapshot["fields"] } } }>("Runtime.evaluate", { expression, returnByValue: true }, attached.sessionId);
+          const value = evaluated.result?.value;
+          tab.scrollX = value?.scrollX; tab.scrollY = value?.scrollY; tab.fields = value?.fields;
+        }
+      } catch { /* Keep the URL even when a page blocks inspection. */ }
+      tabs.push(tab);
+    }
+    if (tabs.length && !tabs.some((tab) => tab.active)) tabs[tabs.length - 1].active = true;
+    return { sessionId, name, capturedAt: new Date().toISOString(), tabs, activeTab: Math.max(0, tabs.findIndex((tab) => tab.active)) };
+  });
 }
 
 function interactiveViewerUrl(value: string) {
@@ -62,6 +134,10 @@ function steelConnectUrl(sessionId: string, apiKey: string) {
 type SteelSession = { id?: string; debugUrl?: string; sessionViewerUrl?: string; websocketUrl?: string; expiresAt?: string; profileId?: string };
 
 function steelHeaders(apiKey: string) { return { "Content-Type": "application/json", "steel-api-key": apiKey }; }
+
+async function createSteelSession(apiKey: string, body: Record<string, unknown>) {
+  return fetch("https://api.steel.dev/v1/sessions", { method: "POST", headers: steelHeaders(apiKey), body: JSON.stringify(body), cache: "no-store" }).catch(() => undefined);
+}
 
 function safeTraceText(value: unknown) {
   if (typeof value === "string") return value.trim() || undefined;
@@ -101,27 +177,41 @@ export async function POST(request: Request) {
     return Response.json({ error: "Remote browsing is not configured" }, { status: 503 });
   }
 
-  const { scapeId, target } = await request.json() as { scapeId?: string; target?: string };
+  const { scapeId, target, sessionName, snapshot, sourceSessionId } = await request.json() as { scapeId?: string; target?: string; sessionName?: string; snapshot?: BrowserSessionSnapshot; sourceSessionId?: string };
   const loaded = await loadScape(request, scapeId);
   if (loaded.error) return loaded.error;
   const scape = loaded.scape!;
-  const quota = rateLimit(request, "steel-session", 4, 60 * 60 * 1000, loaded.user!.id);
+  const quota = rateLimit(request, "steel-session", 6, 60 * 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   const dailyQuota = rateLimit(request, "steel-session-daily", 20, 24 * 60 * 60 * 1000, loaded.user!.id);
   if (!dailyQuota.allowed) return rateLimited(dailyQuota.retryAfter);
 
-  const viewerConfig = { debugConfig: { interactive: true, systemCursor: false }, inactivityTimeout: 120_000 };
+  // No inactivityTimeout: remote input may legitimately pause while the user reads.
+  // Steel still enforces the plan's hard session lifetime.
+  const requestedTimeout = Math.max(300_000, Math.min(86_400_000, Number(process.env.STEEL_SESSION_TIMEOUT_MS) || 900_000));
+  const viewerConfig = { debugConfig: { interactive: true, systemCursor: false }, timeout: requestedTimeout };
   const sessionRequest = scape.browser?.profileId
     ? { ...viewerConfig, profileId: scape.browser.profileId, persistProfile: true }
     : { ...viewerConfig, persistProfile: true };
-  let response = await fetch("https://api.steel.dev/v1/sessions", {
-    method: "POST",
-    headers: steelHeaders(apiKey),
-    body: JSON.stringify(sessionRequest),
-    cache: "no-store",
-  }).catch(() => undefined);
-  // A profile can be unavailable on an entry plan. Browsing must still work.
-  if (response && !response.ok && scape.browser?.profileId) response = await fetch("https://api.steel.dev/v1/sessions", { method: "POST", headers: steelHeaders(apiKey), body: JSON.stringify(viewerConfig), cache: "no-store" }).catch(() => undefined);
+  let response = await createSteelSession(apiKey, sessionRequest);
+  // A persisted profile briefly uploads after release. Wait for it instead of
+  // silently starting a disconnected browser identity without its cookies.
+  if (scape.browser?.profileId) {
+    for (let attempt = 0; response?.status === 409 && attempt < 5; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      response = await createSteelSession(apiKey, sessionRequest);
+    }
+  }
+  // If the plan rejects the requested lifetime, retain the no-idle-shutdown behavior
+  // and let Steel apply its account default.
+  if (response && !response.ok && [400, 422].includes(response.status)) {
+    const fallback = scape.browser?.profileId
+      ? { debugConfig: viewerConfig.debugConfig, profileId: scape.browser.profileId, persistProfile: true }
+      : { debugConfig: viewerConfig.debugConfig, persistProfile: true };
+    response = await createSteelSession(apiKey, fallback);
+  }
+  // A profile can be unavailable or still uploading. Browsing must still work.
+  if (response && !response.ok && scape.browser?.profileId) response = await createSteelSession(apiKey, viewerConfig);
   let session: SteelSession | undefined;
   try { session = response ? await response.json() as SteelSession : undefined; } catch { session = undefined; }
   if (!response?.ok || !session) {
@@ -138,12 +228,13 @@ export async function POST(request: Request) {
   const start = destination(target);
   if (session.id) {
     try {
-      await openRemotePage(session.websocketUrl || steelConnectUrl(session.id, apiKey), start.url);
+      const restoreTabs = snapshot?.tabs?.length ? snapshot.tabs : [{ url: start.url, title: start.label, active: true }];
+      await openRemotePages(session.websocketUrl || steelConnectUrl(session.id, apiKey), restoreTabs);
     } catch {
       // The embedded Steel controls remain available if the initial navigation is delayed.
     }
   }
-  return Response.json({ sessionId: session.id, profileId: session.profileId || scape.browser?.profileId, liveViewUrl: interactiveViewerUrl(viewer), expiresAt: session.expiresAt, destination: start });
+  return Response.json({ sessionId: session.id, profileId: session.profileId || scape.browser?.profileId, liveViewUrl: interactiveViewerUrl(viewer), expiresAt: session.expiresAt, destination: start, sessionName: sessionName?.trim() || snapshot?.name || start.label, sourceSessionId });
 }
 
 export async function GET(request: Request) {
@@ -162,17 +253,46 @@ export async function GET(request: Request) {
   return Response.json({ events: (data.events || []).map((event, index) => cleanTrace(event, sessionId, index)) });
 }
 
+export async function PATCH(request: Request) {
+  if (!databaseEnabled) return Response.json({ error: "Database is not configured" }, { status: 503 });
+  const apiKey = process.env.STEEL_API_KEY;
+  if (!apiKey) return Response.json({ error: "Remote browsing is not configured" }, { status: 503 });
+  const { scapeId, sessionId, target, action, sessionName, activeUrl } = await request.json() as { scapeId?: string; sessionId?: string; target?: string; action?: "navigate" | "checkpoint"; sessionName?: string; activeUrl?: string };
+  const loaded = await loadScape(request, scapeId);
+  if (loaded.error) return loaded.error;
+  const quota = rateLimit(request, "steel-navigation", 40, 60 * 60 * 1000, loaded.user!.id);
+  if (!quota.allowed) return rateLimited(quota.retryAfter);
+  if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
+  if (action === "checkpoint") {
+    try {
+      const snapshot = await captureRemoteSession(steelConnectUrl(sessionId, apiKey), sessionId, sessionName?.trim() || "Browsing session", activeUrl);
+      return Response.json({ snapshot });
+    } catch {
+      return Response.json({ error: "The live browser is no longer reachable." }, { status: 409 });
+    }
+  }
+  const next = destination(target);
+  try {
+    await navigateRemotePage(steelConnectUrl(sessionId, apiKey), next.url, activeUrl);
+    return Response.json({ navigated: true, destination: next });
+  } catch {
+    return Response.json({ error: "The live browser disconnected. Reconnect or restore the saved session." }, { status: 409 });
+  }
+}
+
 export async function DELETE(request: Request) {
   if (!databaseEnabled) return Response.json({ error: "Database is not configured" }, { status: 503 });
   const apiKey = process.env.STEEL_API_KEY;
   if (!apiKey) return Response.json({ error: "Remote browsing is not configured" }, { status: 503 });
-  const { scapeId, sessionId } = await request.json() as { scapeId?: string; sessionId?: string };
+  const { scapeId, sessionId, sessionName, activeUrl } = await request.json() as { scapeId?: string; sessionId?: string; sessionName?: string; activeUrl?: string };
   const loaded = await loadScape(request, scapeId);
   if (loaded.error) return loaded.error;
   const quota = rateLimit(request, "steel-close", 12, 60 * 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
+  let snapshot: BrowserSessionSnapshot | undefined;
+  try { snapshot = await captureRemoteSession(steelConnectUrl(sessionId, apiKey), sessionId, sessionName?.trim() || "Browsing session", activeUrl); } catch { snapshot = undefined; }
   const response = await fetch(`https://api.steel.dev/v1/sessions/${encodeURIComponent(sessionId)}/release`, { method: "POST", headers: steelHeaders(apiKey), body: JSON.stringify({}), cache: "no-store" }).catch(() => undefined);
   if (!response?.ok && response?.status !== 404 && response?.status !== 409) return Response.json({ error: "Could not close the browser session." }, { status: 502 });
-  return Response.json({ closed: true });
+  return Response.json({ closed: true, snapshot });
 }

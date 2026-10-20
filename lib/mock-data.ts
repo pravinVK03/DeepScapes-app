@@ -2,7 +2,34 @@ export type ResourceType = "note" | "task" | "file" | "image" | "video" | "audio
 export type Resource = { id: string; title: string; type: ResourceType; detail: string; date: string; done?: boolean; starred?: boolean; content?: string; mimeType?: string };
 export type Activity = { id: string; action: string; detail: string; time: string; actorId?: string; actorName?: string; actorEmail?: string };
 export type BrowserActivity = { id: string; type: string; time: string; url?: string; target?: string; detail?: string; sessionId: string };
-export type BrowserState = { profileId?: string; activeSessionId?: string; liveViewUrl?: string; lastTarget?: string; lastUrl?: string; updatedAt?: string; activity?: BrowserActivity[] };
+export type BrowserTabSnapshot = {
+  url: string;
+  title?: string;
+  active?: boolean;
+  scrollX?: number;
+  scrollY?: number;
+  fields?: { selector: string; value?: string; checked?: boolean; selectedIndex?: number }[];
+};
+export type BrowserSessionSnapshot = {
+  sessionId: string;
+  name: string;
+  capturedAt: string;
+  tabs: BrowserTabSnapshot[];
+  activeTab?: number;
+  sourceSessionId?: string;
+};
+export type BrowserState = {
+  profileId?: string;
+  activeSessionId?: string;
+  activeSessionName?: string;
+  liveViewUrl?: string;
+  expiresAt?: string;
+  lastTarget?: string;
+  lastUrl?: string;
+  updatedAt?: string;
+  activity?: BrowserActivity[];
+  sessions?: Record<string, BrowserSessionSnapshot>;
+};
 export type CollaborationPermission = "view" | "edit";
 export type Collaborator = { id: string; name: string; email: string; permission: CollaborationPermission; pending?: boolean };
 export type Scape = { id: string; title: string; description: string; template: string; cover: string; updated: string; createdAt?: string; updatedAt?: string; resources: Resource[]; activity: Activity[]; ownerId?: string; collaborators?: Collaborator[]; browser?: BrowserState; browserContexts?: Record<string, string> };

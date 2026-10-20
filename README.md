@@ -69,6 +69,7 @@ FEEDBACK_TO_EMAIL=padmanathan.kdev@gmail.com
 | `SUPABASE_URL` | Server | Supabase project URL used by Route Handlers. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only | Database and storage access through the backend. Never expose this value publicly. |
 | `STEEL_API_KEY` | Server only | Creates, resumes, traces, and closes remote browser sessions. |
+| `STEEL_SESSION_TIMEOUT_MS` | Server only | Requested Steel hard session lifetime. Defaults to 15 minutes; Steel caps it to the account plan. |
 | `RESEND_API_KEY` | Server only | Sends an email copy of each saved feedback submission through Resend. |
 | `FEEDBACK_FROM_EMAIL` | Server only | Verified sender used for feedback notifications. Defaults to Resend's onboarding sender for testing. |
 | `FEEDBACK_TO_EMAIL` | Server only | Feedback notification recipient. Defaults to `padmanathan.kdev@gmail.com`. |
@@ -94,6 +95,8 @@ The application creates its private `deepscapes-resources` storage bucket when t
 
 Feedback is first saved as JSON in the private `deepscapes-feedback` bucket and then emailed through Resend. Email uses the feedback ID as an idempotency key to avoid duplicate copies. A mail-provider failure does not discard the stored submission.
 
+For production mail, add `RESEND_API_KEY` to the Vercel **Production** environment and redeploy so the function receives it. Set `FEEDBACK_FROM_EMAIL` to an address on a domain verified in Resend; `onboarding@resend.dev` is intended for initial testing and may restrict recipients.
+
 ## Authentication and permissions
 
 New accounts receive a personal `username's Scape`. Usernames are derived safely from account metadata or email and receive a short suffix when necessary.
@@ -108,11 +111,11 @@ Audit actors are assigned from the authenticated server session, preventing clie
 
 ## Remote browsing
 
-Each Scape can create an interactive Steel browser session. Search terms open in Google, while URLs open directly. DeepScapes stores the Scape's Steel profile identifier and last destination so later sessions can restore cookies and local storage when supported by Steel.
+Each Scape can create a named, interactive Steel browser session. Search terms open in Google, while URLs navigate the current remote browser without replacing it. The embedded viewer itself expands to full screen, so fullscreen browsing does not create a second viewer or local browser tab.
 
-The app periodically imports Steel agent traces, including navigation, clicks, scrolling, page URLs, errors, and session lifecycle events. Typed form values are deliberately redacted before storage so passwords and sensitive input are not written into the Scape activity log.
+DeepScapes keeps the Steel profile identifier and periodically checkpoints every open tab, title, URL, scroll position, and non-sensitive form state. Password, payment, token, and one-time-code fields are excluded. **Save & end** captures the latest checkpoint, releases the paid Steel session, and clears the browser UI. Selecting an ended session asks whether to continue its history or create a named copy; either path reconstructs the saved tab set while the Steel profile restores cookies and browser storage.
 
-Use **Save & end** to close a session and allow Steel to persist the browser profile cleanly.
+The app also imports Steel agent traces, including navigation, clicks, scrolling, page URLs, errors, and session lifecycle events. Typed values remain redacted in the activity timeline. A short disconnect reloads the same viewer; a terminated session can be rebuilt from its latest checkpoint. Steel still applies the account's hard lifetime (currently 15 minutes on Launch, one hour on Scale, and up to 24 hours on Enterprise), so DeepScapes checkpoints and rolls an actively viewed session before that limit when Steel returns an expiry timestamp.
 
 ## Rate limits and cost controls
 
@@ -120,7 +123,8 @@ Current per-user or per-IP limits include:
 
 | Operation | Limit |
 | --- | --- |
-| Steel session starts | 4 per user per hour and 20 per user per day |
+| Steel session starts | 6 per user per hour and 20 per user per day |
+| Steel navigation and checkpoints | 40 per user per hour |
 | Steel trace requests | 20 per user per minute |
 | Steel session closes | 12 per user per hour |
 | Upload preparation | 20 per user per hour |

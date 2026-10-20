@@ -54,5 +54,5 @@ export async function POST(request: Request) {
     return Response.json({ error: "Feedback could not be saved. Please try again.", supportEmail: "padmanathan.kdev@gmail.com" }, { status: 500 });
   }
   const email = await sendFeedbackCopy(feedback, new URL(request.url).origin);
-  return Response.json({ saved: true, emailed: email.sent }, { status: 201 });
+  return Response.json({ saved: true, emailed: email.sent, emailStatus: email.sent ? "sent" : email.reason, supportEmail: "padmanathan.kdev@gmail.com" }, { status: 201 });
 }

@@ -7,8 +7,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/ui/app-header";
 import { Icon } from "@/components/ui/icons";
-import { BrowserActivity, BrowserState, Resource, ResourceType, Scape } from "@/lib/mock-data";
-import { deleteScape, newId, saveScape, useScape } from "@/lib/scape-store";
+import { BrowserActivity, BrowserSessionSnapshot, BrowserState, Resource, ResourceType, Scape } from "@/lib/mock-data";
+import { deleteScape, getScape, newId, saveScape, useScape } from "@/lib/scape-store";
 import { useAuth } from "@/components/auth/auth-provider";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 
@@ -22,8 +22,8 @@ const icons: Record<ResourceType, string> = { note: "note", task: "task", file: 
 const log = (action: string, detail: string) => ({ id: newId("activity"), action, detail, time: new Date().toISOString() });
 function relative(value: string) { const time = new Date(value).getTime(); if (Number.isNaN(time)) return value; const mins = Math.max(0, Math.floor((Date.now() - time) / 60000)); if (mins < 1) return "Just now"; if (mins < 60) return mins + "m ago"; if (mins < 1440) return Math.floor(mins / 60) + "h ago"; return Math.floor(mins / 1440) + "d ago"; }
 type WebLog = BrowserActivity;
-type ResumeRequest = { key: string; url: string };
-type WebSession = { id: string; title: string; url?: string; startedAt: string; endedAt?: string; lastAt: string; status: "active" | "ended" | "interrupted"; events: WebLog[] };
+type ResumeRequest = { key: string; mode: "resume" | "duplicate"; name: string; snapshot: BrowserSessionSnapshot };
+type WebSession = { id: string; title: string; url?: string; startedAt: string; endedAt?: string; lastAt: string; status: "active" | "ended" | "interrupted"; events: WebLog[]; snapshot?: BrowserSessionSnapshot };
 function sessionTitle(events: WebLog[]) {
   const started = events.find((item) => item.type === "session started");
   if (started?.target) return started.target;
@@ -31,7 +31,7 @@ function sessionTitle(events: WebLog[]) {
   if (event?.url) { try { return new URL(event.url).hostname.replace(/^www\./, ""); } catch { return event.url; } }
   return "Browsing session";
 }
-function groupWebSessions(logs: WebLog[], activeSessionId?: string): WebSession[] {
+function groupWebSessions(logs: WebLog[], activeSessionId?: string, snapshots: Record<string, BrowserSessionSnapshot> = {}, activeName?: string): WebSession[] {
   const grouped = new Map<string, WebLog[]>();
   for (const item of logs) grouped.set(item.sessionId, [...(grouped.get(item.sessionId) || []), item]);
   return [...grouped.entries()].map(([id, entries]) => {
@@ -40,7 +40,10 @@ function groupWebSessions(logs: WebLog[], activeSessionId?: string): WebSession[
     const ended = [...events].reverse().find((item) => item.type === "session ended");
     const lastUrl = [...events].reverse().find((item) => item.url)?.url;
     const status: WebSession["status"] = id === activeSessionId ? "active" : ended ? "ended" : "interrupted";
-    return { id, title: sessionTitle(events), url: lastUrl || started?.url, startedAt: started?.time || events[0]?.time || new Date().toISOString(), endedAt: ended?.time, lastAt: events.at(-1)?.time || new Date().toISOString(), status, events };
+    const snapshot = snapshots[id];
+    const title = id === activeSessionId && activeName ? activeName : snapshot?.name || sessionTitle(events);
+    const activeTab = snapshot?.tabs[snapshot.activeTab ?? snapshot.tabs.findIndex((tab) => tab.active)] || snapshot?.tabs.find((tab) => tab.active);
+    return { id, title, url: activeTab?.url || lastUrl || started?.url, startedAt: started?.time || events[0]?.time || new Date().toISOString(), endedAt: ended?.time, lastAt: snapshot?.capturedAt || events.at(-1)?.time || new Date().toISOString(), status, events, snapshot };
   }).sort((left, right) => new Date(right.lastAt).getTime() - new Date(left.lastAt).getTime());
 }
 function durationLabel(session: WebSession) {
@@ -53,9 +56,9 @@ function eventTarget(value?: string) { return value === "[object Object]" ? "Pag
 
 export default function WorkspaceScreen() {
   const params = useParams<{ id: string }>(); const { user } = useAuth(); const scape = useScape(params.id);
-  const [adding, setAdding] = useState<ResourceType | null>(null); const [editing, setEditing] = useState(false); const [focused, setFocused] = useState<ResourceType | null>(null); const [webLogs, setWebLogs] = useState<WebLog[]>([]); const [webActivityOpen, setWebActivityOpen] = useState(false); const [resumeRequest, setResumeRequest] = useState<ResumeRequest>(); const [notice, setNotice] = useState("");
+  const [adding, setAdding] = useState<ResourceType | null>(null); const [editing, setEditing] = useState(false); const [focused, setFocused] = useState<ResourceType | null>(null); const [webLogs, setWebLogs] = useState<WebLog[]>([]); const [webActivityOpen, setWebActivityOpen] = useState(false); const [resumeRequest, setResumeRequest] = useState<ResumeRequest>(); const [resumeChoice, setResumeChoice] = useState<WebSession>(); const [notice, setNotice] = useState<{ text: string; tone: "success" | "error" }>();
   const done = useMemo(() => scape?.resources.filter((item) => item.type === "task" && item.done).length ?? 0, [scape]);
-  const browserSessions = useMemo(() => groupWebSessions(webLogs, scape?.browser?.activeSessionId), [scape?.browser?.activeSessionId, webLogs]);
+  const browserSessions = useMemo(() => groupWebSessions(webLogs, scape?.browser?.activeSessionId, scape?.browser?.sessions, scape?.browser?.activeSessionName), [scape?.browser?.activeSessionId, scape?.browser?.activeSessionName, scape?.browser?.sessions, webLogs]);
   useEffect(() => {
     if (!scape) return;
     const timer = window.setTimeout(() => setWebLogs(scape.browser?.activity || []), 0);
@@ -64,12 +67,19 @@ export default function WorkspaceScreen() {
   if (!scape) return <main className="min-h-screen"><AppHeader /><p className="mx-auto max-w-7xl px-5 py-12 text-sm text-[#718077]">This Scape is unavailable.</p></main>;
   const canEdit = scape.ownerId === user?.id || scape.collaborators?.some((person) => person.email === user?.email && person.permission === "edit") === true;
   const update = (next: Scape) => saveScape(next);
-  function showNotice(value: string) { setNotice(value); window.setTimeout(() => setNotice(""), 3200); }
+  function showNotice(text: string, tone: "success" | "error" = "success") { setNotice({ text, tone }); window.setTimeout(() => setNotice(undefined), 3200); }
   function resumeSession(session: WebSession) {
     setWebActivityOpen(false); document.getElementById("scape-browser")?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (session.status === "active") { showNotice("Returned to the active browser session"); return; }
     if (!session.url) { showNotice("This session has no saved page to resume"); return; }
-    setResumeRequest({ key: crypto.randomUUID(), url: session.url }); showNotice("Resuming from the session's last page");
+    const snapshot = session.snapshot || { sessionId: session.id, name: session.title, capturedAt: session.lastAt, tabs: [{ url: session.url, active: true }], activeTab: 0 };
+    setResumeChoice({ ...session, snapshot });
+  }
+  function continueSession(mode: "resume" | "duplicate") {
+    if (!resumeChoice?.snapshot) return;
+    const name = mode === "duplicate" ? `${resumeChoice.title} copy` : resumeChoice.title;
+    setResumeRequest({ key: crypto.randomUUID(), mode, name, snapshot: resumeChoice.snapshot });
+    setResumeChoice(undefined); showNotice(mode === "duplicate" ? "Creating a copy of the saved session" : "Reconstructing the saved session");
   }
   function toggleTask(resource: Resource) { if (!canEdit) return; void update({ ...scape!, resources: scape!.resources.map((item) => item.id === resource.id ? { ...item, done: !item.done, detail: !item.done ? "Task · Complete" : "Task · In progress" } : item), activity: [log(resource.done ? "Task reopened" : "Task completed", resource.title), ...scape!.activity] }); }
   function toggleStar(resource: Resource) { if (!canEdit) return; void update({ ...scape!, resources: scape!.resources.map((item) => item.id === resource.id ? { ...item, starred: !item.starred } : item), activity: [log(resource.starred ? "Resource unstarred" : "Resource starred", resource.title), ...scape!.activity] }); }
@@ -81,14 +91,23 @@ export default function WorkspaceScreen() {
     <div className="workspace-cover mt-5 rounded-[1.75rem] p-6 sm:p-8" style={cover}><p className="text-sm">{scape.template}</p><div className="mt-5 flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><h1 className="text-4xl font-medium tracking-[-.06em] sm:text-5xl">{scape.title}</h1>{scape.description && <p className="mt-3 max-w-xl leading-6">{scape.description}</p>}</div>{canEdit && <button onClick={() => setEditing(true)} className="rounded-lg border px-3 py-2 text-sm">Edit</button>}</div></div>
     <div className="mt-7 grid gap-7 xl:grid-cols-[minmax(0,1fr)_290px]"><div><InScapeBrowser scape={scape} resumeRequest={resumeRequest} onBrowserChange={(browser) => { setWebLogs(browser.activity || []); void update({ ...scape, browser }); }} /><div className="mb-5 mt-8 flex items-center justify-between"><div><p className="text-xs font-medium uppercase tracking-[.16em] text-[#718077]">Project contents</p><h2 className="mt-1 text-2xl font-semibold tracking-[-.04em]">Everything in one place.</h2></div>{canEdit && <button onClick={() => setAdding("file")} className="inline-flex items-center gap-2 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white"><Icon name="plus" className="h-4 w-4" />Add</button>}</div><div className="grid gap-x-8 gap-y-6 md:grid-cols-2">{sections.map((section) => <ResourceSection key={section.type} section={section} resources={scape.resources.filter((item) => item.type === section.type)} scape={scape} canEdit={canEdit} onAdd={() => setAdding(section.type)} onToggle={toggleTask} onStar={toggleStar} onDelete={removeResource} onMaximize={() => setFocused(section.type)} />)}</div></div>
       <aside className="space-y-4 xl:sticky xl:top-5 xl:self-start"><Link href={"/timeline/" + scape.id} className="block rounded-2xl bg-[#315443] p-5 text-white"><span className="text-sm text-white/70">Resume this Scape</span><p className="mt-4 font-serif text-xl">{scape.resources[0]?.title ?? "Add your first resource"}</p><span className="mt-3 inline-block text-sm">Open activity →</span></Link><div className="rounded-2xl border border-[#e5e8e2] bg-white p-5"><div className="flex items-center justify-between"><h2 className="font-semibold">Activity</h2><Link href={"/timeline/" + scape.id} className="text-xs text-[#718077]">View all</Link></div><div className="mt-4 space-y-4">{scape.activity.slice(0, 4).map((item) => <div className="flex gap-3" key={item.id}><span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#a7bf97]" /><div className="min-w-0"><p className="text-sm">{item.action}</p><p className="mt-0.5 truncate text-xs text-[#718077]">{item.detail} · {relative(item.time)}</p></div></div>)}</div></div><div className="rounded-2xl border border-[#e5e8e2] bg-white p-5"><div className="flex items-center justify-between"><div><h2 className="font-semibold">Web activity</h2><p className="mt-0.5 text-xs text-[#8b968e]">{browserSessions.length} session{browserSessions.length === 1 ? "" : "s"}</p></div>{browserSessions.length > 0 && <button onClick={() => setWebActivityOpen(true)} className="text-xs text-[#718077]">View all</button>}</div><div className="mt-4 space-y-2">{browserSessions.length ? browserSessions.slice(0, 3).map((session) => <WebSessionDisclosure key={session.id} session={session} compact onResume={resumeSession} />) : <p className="text-sm text-[#718077]">No web activity yet.</p>}</div></div><div className="rounded-2xl border border-[#e5e8e2] bg-[#f0f3eb] p-5"><p className="text-xs uppercase tracking-[.14em] text-[#718077]">Tasks</p><p className="mt-2 text-sm">{done} complete · {scape.resources.filter((item) => item.type === "task").length} total</p></div></aside>
-    </div></section>{adding && <AddResource scape={scape} initialType={adding} close={() => setAdding(null)} onAdded={(resource) => showNotice(`${resource.title} added to this Scape`)} />}{editing && <ScapeEditor scape={scape} close={() => setEditing(false)} save={update} canDelete={scape.ownerId === user?.id} />}{focused && <FocusedSection label={sections.find((section) => section.type === focused)!.label} resources={scape.resources.filter((item) => item.type === focused)} scape={scape} canEdit={canEdit} close={() => setFocused(null)} onToggle={toggleTask} onStar={toggleStar} onDelete={removeResource} />}{webActivityOpen && <WebActivity sessions={browserSessions} close={() => setWebActivityOpen(false)} onResume={resumeSession} />}{notice && <div role="status" aria-live="polite" className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#315443] px-4 py-3 text-sm font-medium text-white shadow-xl"><span className="grid h-5 w-5 place-items-center rounded-full bg-white/20">✓</span>{notice}</div>}</main>;
+    </div></section>{adding && <AddResource scape={scape} initialType={adding} close={() => setAdding(null)} onAdded={(resource) => showNotice(`${resource.title} added to this Scape`)} onPersistError={() => showNotice("Resource added on this device, but cloud sync failed. Retry when connected.", "error")} />}{editing && <ScapeEditor scape={scape} close={() => setEditing(false)} save={update} canDelete={scape.ownerId === user?.id} />}{focused && <FocusedSection label={sections.find((section) => section.type === focused)!.label} resources={scape.resources.filter((item) => item.type === focused)} scape={scape} canEdit={canEdit} close={() => setFocused(null)} onToggle={toggleTask} onStar={toggleStar} onDelete={removeResource} />}{webActivityOpen && <WebActivity sessions={browserSessions} close={() => setWebActivityOpen(false)} onResume={resumeSession} />}{resumeChoice && <ResumeSessionChoice session={resumeChoice} close={() => setResumeChoice(undefined)} choose={continueSession} />}{notice && <div role="status" aria-live="polite" className={`fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full px-4 py-3 text-sm font-medium text-white shadow-xl ${notice.tone === "error" ? "bg-[#9f4f47]" : "bg-[#315443]"}`}><span className="grid h-5 w-5 place-items-center rounded-full bg-white/20">{notice.tone === "error" ? "!" : "✓"}</span>{notice.text}</div>}</main>;
 }
 
 function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scape; resumeRequest?: ResumeRequest; onBrowserChange: (browser: BrowserState) => void }) {
-  const [liveViewUrl, setLiveViewUrl] = useState(scape.browser?.liveViewUrl || ""); const [input, setInput] = useState(scape.browser?.lastTarget || ""); const [opening, setOpening] = useState(false); const [ending, setEnding] = useState(false); const [message, setMessage] = useState("");
+  const [liveViewUrl, setLiveViewUrl] = useState(scape.browser?.liveViewUrl || "");
+  const [input, setInput] = useState(scape.browser?.lastTarget || "");
+  const [sessionName, setSessionName] = useState(scape.browser?.activeSessionName || "");
+  const [opening, setOpening] = useState(false); const [ending, setEnding] = useState(false); const [message, setMessage] = useState("");
+  const [fullScreen, setFullScreen] = useState(false); const [paused, setPaused] = useState(false); const [viewerKey, setViewerKey] = useState(0); const [disconnected, setDisconnected] = useState(false);
   const sessionId = scape.browser?.activeSessionId;
-  const browserRef = useRef(scape.browser); const onBrowserChangeRef = useRef(onBrowserChange); const resumedRequestRef = useRef<string | undefined>(undefined); const openRef = useRef<((targetOverride?: string) => Promise<void>) | undefined>(undefined);
+  const browserRef = useRef(scape.browser); const onBrowserChangeRef = useRef(onBrowserChange); const resumedRequestRef = useRef<string | undefined>(undefined); const checkpointFailuresRef = useRef(0); const releaseActiveRef = useRef<() => Promise<BrowserSessionSnapshot | false>>(async () => false); const startSessionRef = useRef<(target: string, request?: ResumeRequest) => Promise<void>>(async () => undefined);
   useEffect(() => { browserRef.current = scape.browser; onBrowserChangeRef.current = onBrowserChange; }, [onBrowserChange, scape.browser]);
+  useEffect(() => {
+    if (!fullScreen) return;
+    const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = overflow; };
+  }, [fullScreen]);
   const persist = useCallback((next: Partial<BrowserState>) => {
     const browser = { ...browserRef.current, ...next, updatedAt: new Date().toISOString() };
     browserRef.current = browser; onBrowserChangeRef.current(browser);
@@ -101,44 +120,128 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     const data = await response.json() as { events?: WebLog[] };
     const current = browserRef.current?.activity || [];
     const merged = [...current, ...(data.events || [])].filter((item, index, all) => all.findIndex((entry) => entry.id === item.id) === index).sort((left, right) => new Date(right.time).getTime() - new Date(left.time).getTime()).slice(0, 750);
-    if (save && merged.length !== current.length) persist({ activity: merged });
+    const lastUrl = merged.find((item) => item.url)?.url;
+    if (save && (merged.length !== current.length || (lastUrl && lastUrl !== browserRef.current?.lastUrl))) persist({ activity: merged, lastUrl });
     return merged;
   }, [persist, scape.id, sessionId]);
   useEffect(() => { if (!sessionId) return; void syncActivity(); const timer = window.setInterval(() => void syncActivity(), 30_000); return () => window.clearInterval(timer); }, [sessionId, syncActivity]);
+  const checkpoint = useCallback(async () => {
+    if (!sessionId || ending) return;
+    const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token; if (!token) return;
+    const response = await fetch("/api/browser/session", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: "checkpoint", scapeId: scape.id, sessionId, sessionName: sessionName.trim() || browserRef.current?.activeSessionName, activeUrl: browserRef.current?.lastUrl }) }).catch(() => undefined);
+    let data: { snapshot?: BrowserSessionSnapshot } | undefined; try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
+    if (!response?.ok || !data?.snapshot) {
+      checkpointFailuresRef.current += 1;
+      if (checkpointFailuresRef.current > 1) { setDisconnected(true); setMessage("The live browser disconnected. Your latest checkpoint is ready to restore."); }
+      return;
+    }
+    checkpointFailuresRef.current = 0; setDisconnected(false);
+    persist({ sessions: { ...(browserRef.current?.sessions || {}), [sessionId]: data.snapshot } });
+  }, [ending, persist, scape.id, sessionId, sessionName]);
+  useEffect(() => {
+    if (!sessionId) return;
+    const first = window.setTimeout(() => void checkpoint(), 12_000);
+    const timer = window.setInterval(() => void checkpoint(), 90_000);
+    const onVisibility = () => { if (document.visibilityState === "hidden") void checkpoint(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { window.clearTimeout(first); window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
+  }, [checkpoint, sessionId]);
+  function saveSessionName() {
+    if (!sessionId) return;
+    const name = sessionName.trim() || "Browsing session";
+    const activity = (browserRef.current?.activity || []).map((item) => item.id === `session-${sessionId}` ? { ...item, target: name } : item);
+    setSessionName(name); persist({ activeSessionName: name, activity });
+  }
   async function releaseActive() {
-    if (!sessionId) return true;
+    if (!sessionId) return false;
     setEnding(true); setMessage("Saving this browsing session…");
     const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
     if (!token) { setEnding(false); setMessage("Sign in again to save and end this session."); return false; }
     const activity = await syncActivity(false) || browserRef.current?.activity || [];
-    const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 15_000);
-    const response = await fetch("/api/browser/session", { method: "DELETE", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId: scape.id, sessionId }), signal: controller.signal }).catch(() => undefined); window.clearTimeout(timeout);
-    let data: { error?: string } | undefined; try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
+    const activeUrl = activity.find((item) => item.url)?.url || browserRef.current?.lastUrl;
+    const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 55_000);
+    const response = await fetch("/api/browser/session", { method: "DELETE", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId: scape.id, sessionId, sessionName: sessionName.trim() || browserRef.current?.activeSessionName, activeUrl }), signal: controller.signal }).catch(() => undefined); window.clearTimeout(timeout);
+    let data: { error?: string; snapshot?: BrowserSessionSnapshot } | undefined; try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
     if (!response?.ok) { setEnding(false); setMessage(data?.error || "The browser could not be ended. Please retry."); return false; }
-    const ended: WebLog = { id: `session-ended-${sessionId}`, type: "session ended", time: new Date().toISOString(), target: browserRef.current?.lastTarget, detail: "Browser state and activity saved", sessionId };
-    persist({ activeSessionId: undefined, liveViewUrl: undefined, activity: [ended, ...activity.filter((item) => item.id !== ended.id)] });
-    setLiveViewUrl(""); setEnding(false); setMessage("Browser session saved and ended."); return true;
+    const snapshot = data?.snapshot || browserRef.current?.sessions?.[sessionId] || { sessionId, name: sessionName.trim() || browserRef.current?.activeSessionName || "Browsing session", capturedAt: new Date().toISOString(), tabs: browserRef.current?.lastUrl ? [{ url: browserRef.current.lastUrl, active: true }] : [] };
+    const ended: WebLog = { id: `session-ended-${sessionId}`, type: "session ended", time: snapshot.capturedAt, target: snapshot.name, detail: `${snapshot.tabs.length} tab${snapshot.tabs.length === 1 ? "" : "s"} and browser state saved`, sessionId };
+    persist({ activeSessionId: undefined, activeSessionName: undefined, liveViewUrl: undefined, expiresAt: undefined, lastTarget: undefined, lastUrl: undefined, sessions: { ...(browserRef.current?.sessions || {}), [sessionId]: snapshot }, activity: [ended, ...activity.filter((item) => item.id !== ended.id)] });
+    setLiveViewUrl(""); setInput(""); setSessionName(""); setPaused(false); setFullScreen(false); setDisconnected(false); setEnding(false); setMessage("Session saved. The browser is clear."); return snapshot;
+  }
+  async function startSession(target: string, request?: ResumeRequest) {
+    setOpening(true); setMessage("");
+    const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
+    if (!token) { setOpening(false); setMessage("Sign in to open your private browser."); return; }
+    const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 35_000);
+    const name = request?.name || sessionName.trim() || target.trim() || "Browsing session";
+    const response = await fetch("/api/browser/session", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId: scape.id, target, sessionName: name, snapshot: request?.snapshot, sourceSessionId: request?.snapshot.sessionId }), signal: controller.signal }).catch(() => undefined); window.clearTimeout(timeout);
+    let data: { liveViewUrl?: string; error?: string; sessionId?: string; profileId?: string; expiresAt?: string; sessionName?: string; destination?: { url: string; label: string } } | undefined;
+    try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
+    if (!response?.ok || !data?.liveViewUrl) { setOpening(false); setMessage(data?.error ?? "Could not start the remote browser."); return; }
+    const activeTab = request?.snapshot.tabs[request.snapshot.activeTab ?? 0] || request?.snapshot.tabs.find((tab) => tab.active);
+    const event: WebLog = { id: `session-${data.sessionId}`, type: request ? `session ${request.mode}d` : "session started", time: new Date().toISOString(), url: activeTab?.url || data.destination?.url, target: data.sessionName || name, detail: request ? `${request.snapshot.tabs.length} saved tab${request.snapshot.tabs.length === 1 ? "" : "s"} reconstructed from ${request.snapshot.sessionId.slice(0, 8)}` : "Remote browser opened", sessionId: data.sessionId || "" };
+    persist({ activeSessionId: data.sessionId, activeSessionName: data.sessionName || name, profileId: data.profileId, liveViewUrl: data.liveViewUrl, expiresAt: data.expiresAt, lastTarget: target, lastUrl: activeTab?.url || data.destination?.url, activity: [event, ...(browserRef.current?.activity || [])] });
+    checkpointFailuresRef.current = 0; setDisconnected(false); setSessionName(data.sessionName || name); setLiveViewUrl(data.liveViewUrl); setViewerKey((value) => value + 1); setOpening(false); setMessage(request ? `${request.snapshot.tabs.length} saved tabs restored.` : "");
   }
   async function open(targetOverride?: string) {
     const target = targetOverride ?? input;
-    setOpening(true); setMessage("");
-    if (sessionId && !(await releaseActive())) { setOpening(false); return; }
+    if (!target.trim()) { setMessage("Enter a search or website first."); return; }
+    if (!sessionId) { await startSession(target); return; }
+    setOpening(true); setMessage("Opening in the current session…");
     const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
-    if (!token) { setOpening(false); setMessage("Sign in to open your private browser."); return; }
-    const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 15_000);
-    const response = await fetch("/api/browser/session", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId: scape.id, target }), signal: controller.signal }).catch(() => undefined); window.clearTimeout(timeout);
-    let data: { liveViewUrl?: string; error?: string; sessionId?: string; profileId?: string; destination?: { url: string; label: string } } | undefined;
-    try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
-    if (!response?.ok || !data?.liveViewUrl) { setOpening(false); setMessage(data?.error ?? "Could not start the remote browser."); return; }
-    const event: WebLog = { id: `session-${data.sessionId}`, type: "session started", time: new Date().toISOString(), url: data.destination?.url, target: data.destination?.label, detail: "Remote browser opened", sessionId: data.sessionId || "" };
-    persist({ activeSessionId: data.sessionId, profileId: data.profileId, liveViewUrl: data.liveViewUrl, lastTarget: target, lastUrl: data.destination?.url, activity: [event, ...(browserRef.current?.activity || [])] }); setLiveViewUrl(data.liveViewUrl); setOpening(false);
+    if (!token) { setOpening(false); setMessage("Sign in again to continue browsing."); return; }
+    const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 20_000);
+    const response = await fetch("/api/browser/session", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId: scape.id, sessionId, target, activeUrl: browserRef.current?.lastUrl }), signal: controller.signal }).catch(() => undefined); window.clearTimeout(timeout);
+    let data: { error?: string; destination?: { url: string; label: string } } | undefined; try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
+    if (!response?.ok) { setOpening(false); setMessage(data?.error || "The browser disconnected. Use Reconnect, or save and restore the session."); return; }
+    const event: WebLog = { id: `navigate-${sessionId}-${Date.now()}`, type: "navigate", time: new Date().toISOString(), url: data?.destination?.url, target: data?.destination?.label, detail: "Opened in the current browser session", sessionId };
+    persist({ lastTarget: target, lastUrl: data?.destination?.url, activity: [event, ...(browserRef.current?.activity || [])] }); setOpening(false); setMessage("");
   }
-  useEffect(() => { openRef.current = open; });
+  async function reconnect() {
+    if (!sessionId) return;
+    if (!disconnected) { setViewerKey((value) => value + 1); setMessage("Reconnecting to the same live session…"); return; }
+    const saved = browserRef.current?.sessions?.[sessionId];
+    if (!saved?.tabs.length) { setMessage("No recovery checkpoint is available for this session."); return; }
+    const endedSnapshot = await releaseActive(); if (!endedSnapshot) return;
+    const activeTab = saved.tabs[saved.activeTab ?? 0] || saved.tabs.find((tab) => tab.active);
+    await startSession(activeTab?.url || "", { key: crypto.randomUUID(), mode: "resume", name: saved.name, snapshot: saved });
+  }
+  useEffect(() => { releaseActiveRef.current = releaseActive; startSessionRef.current = startSession; });
   useEffect(() => {
     if (!resumeRequest || resumedRequestRef.current === resumeRequest.key) return;
-    resumedRequestRef.current = resumeRequest.key; setInput(resumeRequest.url); void openRef.current?.(resumeRequest.url);
-  }, [resumeRequest]);
-  return <section id="scape-browser" className="scroll-mt-5 overflow-hidden rounded-2xl border border-[#e5e8e2] bg-white"><div className="flex flex-wrap items-center justify-between gap-3 p-4"><p className="font-semibold">Browse</p><div className="flex w-full max-w-2xl gap-2 sm:w-auto"><input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && !opening && !ending && void open()} placeholder="Search the web or enter a website" className="min-w-0 flex-1 rounded-lg border border-[#dce1d9] bg-white px-3 py-2 text-sm outline-none sm:w-72" /><button onClick={() => void open()} disabled={opening || ending} className="shrink-0 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{opening ? "Starting…" : liveViewUrl ? "New session" : "Open"}</button>{liveViewUrl && <><button onClick={() => void releaseActive()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{ending ? "Saving…" : "Save & end"}</button><a href={liveViewUrl} target="_blank" rel="noreferrer" className="shrink-0 rounded-lg border px-3 py-2 text-sm">Full screen ↗</a></>}</div></div>{message && <p role="status" aria-live="polite" className="border-t border-[#e5e8e2] px-4 py-3 text-sm text-[#718077]">{message}</p>}{liveViewUrl && <div className="border-t border-[#e5e8e2]"><iframe title="DeepScapes remote browser" src={liveViewUrl} loading="eager" className="h-[42rem] w-full cursor-default border-0 bg-white" allow="clipboard-read; clipboard-write" /></div>}</section>;
+    resumedRequestRef.current = resumeRequest.key;
+    const activeTab = resumeRequest.snapshot.tabs[resumeRequest.snapshot.activeTab ?? 0] || resumeRequest.snapshot.tabs.find((tab) => tab.active);
+    const begin = async () => {
+      if (sessionId && !(await releaseActiveRef.current())) return;
+      setInput(activeTab?.url || ""); setSessionName(resumeRequest.name);
+      await startSessionRef.current(activeTab?.url || "", resumeRequest);
+    };
+    void begin();
+  }, [resumeRequest, sessionId]);
+  useEffect(() => {
+    if (!sessionId || !scape.browser?.expiresAt) return;
+    const remaining = new Date(scape.browser.expiresAt).getTime() - Date.now() - 45_000;
+    if (remaining <= 0) { const timer = window.setTimeout(() => setDisconnected(true), 0); return () => window.clearTimeout(timer); }
+    const timer = window.setTimeout(async () => {
+      setMessage("Saving a checkpoint before Steel's session limit…");
+      const saved = await releaseActiveRef.current();
+      if (!saved || !saved.tabs.length) return;
+      const activeTab = saved.tabs[saved.activeTab ?? 0] || saved.tabs.find((tab) => tab.active);
+      await startSessionRef.current(activeTab?.url || "", { key: crypto.randomUUID(), mode: "resume", name: saved.name, snapshot: saved });
+    }, remaining);
+    return () => window.clearTimeout(timer);
+  }, [scape.browser?.expiresAt, sessionId]);
+  const shell = fullScreen ? "fixed inset-0 z-[70] flex h-screen flex-col rounded-none border-0 bg-white" : "scroll-mt-5 overflow-hidden rounded-2xl border border-[#e5e8e2] bg-white";
+  return <section id="scape-browser" className={shell}>
+    <div className="flex flex-wrap items-center gap-2 border-b border-[#e5e8e2] p-3 sm:p-4">
+      <div className="mr-auto min-w-[10rem]"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#718077]">Browse</p><input value={sessionName} onChange={(event) => setSessionName(event.target.value)} onBlur={saveSessionName} placeholder="Name this session" className="mt-0.5 w-full bg-transparent text-sm font-semibold outline-none placeholder:text-[#9aa39d]" aria-label="Browser session name" /></div>
+      <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && !opening && !ending && void open()} placeholder="Search the web or enter a website" className="min-w-0 flex-1 rounded-lg border border-[#dce1d9] bg-white px-3 py-2 text-sm outline-none sm:max-w-sm" />
+      <button onClick={() => void open()} disabled={opening || ending} className="shrink-0 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{opening ? "Opening…" : liveViewUrl ? "Go" : "Open"}</button>
+      {liveViewUrl && <><button onClick={() => setPaused((value) => !value)} disabled={ending} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{paused ? "Resume view" : "Pause"}</button><button onClick={() => void reconnect()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{disconnected ? "Restore" : "Reconnect"}</button><button onClick={() => void releaseActive()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{ending ? "Saving…" : "Save & end"}</button><button onClick={() => setFullScreen((value) => !value)} className="shrink-0 rounded-lg border px-3 py-2 text-sm">{fullScreen ? "Exit full screen" : "Full screen"}</button></>}
+    </div>
+    {message && <p role="status" aria-live="polite" className="border-b border-[#e5e8e2] px-4 py-2 text-sm text-[#718077]">{message}</p>}
+    {liveViewUrl && <div className={`relative border-t border-[#e5e8e2] ${fullScreen ? "min-h-0 flex-1" : ""}`}><iframe key={viewerKey} title="DeepScapes remote browser" src={liveViewUrl} loading="eager" onLoad={() => setMessage("")} className={`${fullScreen ? "h-full min-h-[30rem]" : "h-[42rem]"} w-full border-0 bg-white ${paused ? "pointer-events-none opacity-70" : ""}`} allow="clipboard-read; clipboard-write" />{paused && <div className="absolute inset-0 grid place-items-center bg-white/45 backdrop-blur-[1px]"><button onClick={() => setPaused(false)} className="rounded-full bg-[#315443] px-5 py-3 text-sm font-medium text-white shadow-lg">Resume browsing</button></div>}</div>}
+  </section>;
 }
 
 function ResourceSection({ section, resources, scape, canEdit, onAdd, onToggle, onStar, onDelete, onMaximize }: { section: { label: string; type: ResourceType | "starred"; icon: string }; resources: Resource[]; scape: Scape; canEdit: boolean; onAdd: () => void; onToggle: (resource: Resource) => void; onStar: (resource: Resource) => void; onDelete: (resource: Resource) => void; onMaximize: () => void }) {
@@ -164,7 +267,7 @@ function WebSessionDisclosure({ session, compact = false, onResume }: { session:
   return <details className="web-session-card group overflow-hidden rounded-xl border border-[#e5e8e2] bg-[#fbfcf9] open:bg-white">
     <summary className="flex cursor-pointer list-none items-center gap-3 p-3 [&::-webkit-details-marker]:hidden">
       <span className={`h-2 w-2 shrink-0 rounded-full ${session.status === "active" ? "bg-[#65a66f]" : session.status === "ended" ? "bg-[#9aa39d]" : "bg-[#c68a72]"}`} />
-      <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{session.title}</p><p className="mt-0.5 truncate text-xs text-[#8b968e]">{relative(session.startedAt)} · {session.events.length} event{session.events.length === 1 ? "" : "s"}</p></div>
+      <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{session.title}</p><p className="mt-0.5 truncate text-xs text-[#8b968e]">{relative(session.startedAt)} · {session.snapshot?.tabs.length ? `${session.snapshot.tabs.length} tab${session.snapshot.tabs.length === 1 ? "" : "s"} · ` : ""}{session.events.length} event{session.events.length === 1 ? "" : "s"}</p></div>
       {!compact && <span className={`rounded-full px-2 py-1 text-[10px] font-medium capitalize ${statusStyle}`}>{session.status}</span>}
       <span className="text-xs text-[#718077] transition group-open:rotate-180">⌄</span>
     </summary>
@@ -181,6 +284,11 @@ function WebActivity({ sessions, close, onResume }: { sessions: WebSession[]; cl
   return <div className="fixed inset-0 z-30 grid place-items-center bg-black/55 p-4" onMouseDown={close}><section onMouseDown={(event) => event.stopPropagation()} className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-[#f9faf7] shadow-2xl"><header className="flex items-center justify-between border-b border-[#e5e8e2] p-5 sm:p-6"><div><h2 className="text-xl font-semibold">Web session history</h2><p className="mt-1 text-xs text-[#718077]">{sessions.length} session{sessions.length === 1 ? "" : "s"} · expand a session for its complete log</p></div><button onClick={close} className="rounded-lg border px-3 py-2 text-sm">Close</button></header><div className="space-y-3 overflow-y-auto p-4 sm:p-6">{sessions.map((session) => <WebSessionDisclosure key={session.id} session={session} onResume={onResume} />)}</div></section></div>;
 }
 
+function ResumeSessionChoice({ session, close, choose }: { session: WebSession; close: () => void; choose: (mode: "resume" | "duplicate") => void }) {
+  const tabs = session.snapshot?.tabs.length || 1;
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onMouseDown={close}><section onMouseDown={(event) => event.stopPropagation()} className="w-full max-w-lg rounded-2xl border border-[#e5e8e2] bg-[#f9faf7] p-6 shadow-2xl"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#718077]">Restore browser session</p><h2 className="mt-2 text-2xl font-semibold">{session.title}</h2><p className="mt-2 text-sm leading-6 text-[#718077]">{tabs} saved tab{tabs === 1 ? "" : "s"} will be reconstructed with the persisted browser profile, scroll positions, and safe form state.</p><div className="mt-6 grid gap-3 sm:grid-cols-2"><button onClick={() => choose("resume")} className="rounded-xl bg-[#315443] p-4 text-left text-white"><span className="block font-semibold">Resume session</span><span className="mt-1 block text-xs text-white/75">Continue this session&apos;s history.</span></button><button onClick={() => choose("duplicate")} className="rounded-xl border border-[#dce1d9] bg-white p-4 text-left"><span className="block font-semibold">Create a copy</span><span className="mt-1 block text-xs text-[#718077]">Keep the original and branch from it.</span></button></div><button onClick={close} className="mt-4 w-full rounded-lg px-3 py-2 text-sm text-[#718077]">Cancel</button></section></div>;
+}
+
 function ScapeEditor({ scape, close, save, canDelete }: { scape: Scape; close: () => void; save: (scape: Scape) => Promise<void>; canDelete: boolean }) {
   const [title, setTitle] = useState(scape.title); const [description, setDescription] = useState(scape.description); const [cover, setCover] = useState(scape.cover); const [saving, setSaving] = useState(false);
   const router = useRouter();
@@ -191,7 +299,7 @@ function ScapeEditor({ scape, close, save, canDelete }: { scape: Scape; close: (
   return <div className="fixed inset-0 z-30 flex justify-end bg-black/50" onMouseDown={close}><aside onMouseDown={(item) => item.stopPropagation()} className="h-full w-full max-w-md overflow-y-auto bg-[#f9faf7] p-6 shadow-2xl"><div className="flex items-center justify-between"><h2 className="text-2xl font-semibold">Edit Scape</h2><button onClick={close}><Icon name="close" className="h-5 w-5" /></button></div><label className="mt-8 block text-sm font-medium">Name<input value={title} onChange={(item) => setTitle(item.target.value)} className="mt-2 w-full rounded-lg border px-3 py-2" /></label><label className="mt-5 block text-sm font-medium">Description<textarea value={description} onChange={(item) => setDescription(item.target.value)} className="mt-2 h-28 w-full rounded-lg border px-3 py-2" /></label><div className="mt-5"><p className="text-sm font-medium">Thumbnail</p><div className="scape-thumbnail-preview mt-3 h-28 rounded-xl border border-[#e5e8e2]" style={preview} /><div className="mt-3 flex items-center gap-3"><input type="color" value={cover.startsWith("data:") ? "#315443" : cover} onChange={(item) => setCover(item.target.value)} className="h-10 w-12 cursor-pointer rounded border p-1" aria-label="Choose thumbnail color" /><label className="cursor-pointer rounded-lg border px-3 py-2 text-sm">Upload image<input type="file" accept="image/*" onChange={(item) => upload(item.target.files?.[0])} className="hidden" /></label></div></div><button disabled={saving} onClick={submit} className="mt-8 w-full rounded-lg bg-[#315443] py-3 text-sm font-medium text-white">{saving ? "Saving…" : "Save changes"}</button>{canDelete && <button onClick={remove} className="mt-4 w-full rounded-lg px-3 py-2 text-sm text-[#a95b54] hover:bg-[#f7e8e5]">Delete Scape</button>}</aside></div>;
 }
 
-function AddResource({ scape, initialType, close, onAdded }: { scape: Scape; initialType: ResourceType; close: () => void; onAdded: (resource: Resource) => void }) {
+function AddResource({ scape, initialType, close, onAdded, onPersistError }: { scape: Scape; initialType: ResourceType; close: () => void; onAdded: (resource: Resource) => void; onPersistError: () => void }) {
   const [type, setType] = useState<ResourceType>(initialType); const [title, setTitle] = useState(""); const [content, setContent] = useState(""); const [name, setName] = useState(""); const [data, setData] = useState(""); const [mime, setMime] = useState(""); const [uploading, setUploading] = useState(false); const [saving, setSaving] = useState(false); const [message, setMessage] = useState("");
   function classify(file: File): ResourceType { if (file.type.startsWith("image/")) return "image"; if (file.type.startsWith("video/")) return "video"; if (file.type.startsWith("audio/")) return "audio"; return "file"; }
   async function upload(file?: File) {
@@ -219,6 +327,18 @@ function AddResource({ scape, initialType, close, onAdded }: { scape: Scape; ini
     if (file.size < 2_000_000) { const reader = new FileReader(); reader.onload = () => { setData(String(reader.result)); setUploading(false); }; reader.readAsDataURL(file); return; }
     setUploading(false); setMessage("Sign in to upload files to your Scape.");
   }
-  async function add() { if (uploading || saving) return; setSaving(true); setMessage(""); const item: Resource = { id: newId("resource"), title: title || name || "Untitled resource", type, detail: (type === "file" ? "Document" : type) + " · " + (name || "Added"), date: "Just now", content: data || content, mimeType: mime }; try { await saveScape({ ...scape, resources: [item, ...scape.resources], activity: [log((type === "file" ? "File" : type) + " added", item.title), ...scape.activity] }); close(); onAdded(item); } catch { setSaving(false); setMessage("Could not save this resource. Please try again."); } }
+  async function add() {
+    if (uploading || saving) return;
+    setSaving(true); setMessage("");
+    const item: Resource = { id: newId("resource"), title: title || name || "Untitled resource", type, detail: (type === "file" ? "Document" : type) + " · " + (name || "Added"), date: "Just now", content: data || content, mimeType: mime };
+    // saveScape updates the local store synchronously. Close immediately, then
+    // finish the remote persistence without making the modal feel stuck.
+    const current = getScape(scape.id) || scape;
+    let persistence: Promise<void>;
+    try { persistence = saveScape({ ...current, resources: [item, ...current.resources], activity: [log((type === "file" ? "File" : type) + " added", item.title), ...current.activity] }); }
+    catch { setSaving(false); setMessage("Could not add this resource on this device. Please try again."); return; }
+    close(); onAdded(item);
+    try { await persistence; } catch { onPersistError(); }
+  }
   return <div className="fixed inset-0 z-20 grid place-items-end bg-black/60 p-4 sm:place-items-center" onMouseDown={close}><div onMouseDown={(item) => item.stopPropagation()} className="w-full max-w-xl rounded-2xl bg-[#f9faf7] p-6 shadow-2xl"><div className="flex justify-between"><div><p className="text-sm text-[#718077]">Add resource</p><h2 className="mt-1 text-xl font-semibold">{scape.title}</h2></div><button onClick={close}><Icon name="close" className="h-5 w-5" /></button></div><div className="mt-6 grid grid-cols-4 gap-2 sm:grid-cols-7">{(["note", "task", "file", "image", "video", "audio", "link"] as ResourceType[]).map((kind) => <button onClick={() => setType(kind)} className={"rounded-lg px-2 py-2 text-xs capitalize " + (type === kind ? "bg-[#315443] text-white" : "bg-white text-[#718077]")} key={kind}>{kind}</button>)}</div><label className="mt-5 block text-sm">Name<input value={title} onChange={(item) => setTitle(item.target.value)} className="mt-2 w-full rounded-lg border px-3 py-2" /></label>{(type === "note" || type === "link") && <label className="mt-4 block text-sm">{type === "link" ? "URL" : "Content"}<textarea value={content} onChange={(item) => setContent(item.target.value)} className="mt-2 h-24 w-full rounded-lg border px-3 py-2" /></label>}{["file", "image", "video", "audio"].includes(type) && <label className="mt-4 block cursor-pointer rounded-xl border border-dashed p-4 text-center text-sm text-[#718077]">{uploading ? "Uploading…" : name || "Choose any file — it will be sorted automatically"}<input type="file" onChange={(item) => void upload(item.target.files?.[0])} className="hidden" /></label>}{message && <p className="mt-3 text-sm text-[#a95b54]">{message}</p>}<button onClick={() => void add()} disabled={uploading || saving || (["file", "image", "video", "audio"].includes(type) && !data)} className="mt-5 w-full rounded-lg bg-[#315443] py-3 text-sm font-medium text-white disabled:opacity-50">{uploading ? "Uploading…" : saving ? "Adding…" : "Add resource"}</button></div></div>;
 }
