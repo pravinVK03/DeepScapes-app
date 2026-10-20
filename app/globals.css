@@ -25,7 +25,7 @@ button { cursor: pointer; }
 .page-loader-line { background: #e5e8e2; }
 .page-loader-line span { width: 32%; background: #315443; animation: loading-sweep 1.35s cubic-bezier(.45, 0, .55, 1) infinite; }
 .logo-dark { display: none; }
-html.dark { --ink: #f5f5f5; --muted: #a3aaa5; --paper: #0d0d0d; --line: #373737; --moss: #527f66; --cream: #242424; background: #0d0d0d; color-scheme: dark; }
+html.dark { --ink: #f5f5f5; --muted: #a3a3a3; --paper: #0d0d0d; --line: #373737; --moss: #f5f5f5; --cream: #242424; background: #0d0d0d; color-scheme: dark; }
 html.dark body, html.dark main { background: #0d0d0d !important; color: #f5f5f5; }
 html.dark .page-loader { background: #0d0d0d !important; }
 html.dark .page-loader-line { background: #292929; }
@@ -95,13 +95,13 @@ html.dark .profile-trigger[aria-expanded="true"] {
 }
 
 html.dark .profile-trigger > span:last-child { color: #f5f5f5 !important; }
-html.dark .google-auth-button { background: #242424 !important; border-color: #4a4a4a !important; color: #f5f5f5 !important; }
-html.dark .google-auth-button:hover { background: #315443 !important; border-color: #5f8a71 !important; color: #fff !important; }
+html.dark .google-auth-button { background: #f5f5f5 !important; border-color: #f5f5f5 !important; color: #111 !important; }
+html.dark .google-auth-button:hover { background: #dedede !important; border-color: #fff !important; color: #111 !important; }
 html.dark .resource-item:hover { background: #262626 !important; border-color: #5a5a5a !important; }
 html.dark .web-session-card { background: #191919 !important; border-color: #3a3a3a !important; }
 html.dark .web-session-card[open] { background: #1d1d1d !important; }
 html.dark .web-session-card summary:hover { background: #222 !important; }
-html.dark .web-session-status-active { background: #243b2a !important; color: #9ed6b5 !important; }
+html.dark .web-session-status-active { background: #2a2a2a !important; color: #f5f5f5 !important; }
 html.dark .web-session-status-ended { background: #2a2a2a !important; color: #d7d7d7 !important; }
 html.dark .web-session-status-interrupted { background: #412b27 !important; color: #ffb0a6 !important; }
 
