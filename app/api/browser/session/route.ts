@@ -1,5 +1,5 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
-import { Scape } from "@/lib/mock-data";
+import { BrowserActivity, Scape } from "@/lib/mock-data";
 
 export const runtime = "nodejs";
 
@@ -58,7 +58,29 @@ function steelConnectUrl(sessionId: string, apiKey: string) {
   return url.toString();
 }
 
-type SteelSession = { id?: string; debugUrl?: string; sessionViewerUrl?: string; websocketUrl?: string; expiresAt?: string };
+type SteelSession = { id?: string; debugUrl?: string; sessionViewerUrl?: string; websocketUrl?: string; expiresAt?: string; profileId?: string };
+
+function steelHeaders(apiKey: string) { return { "Content-Type": "application/json", "steel-api-key": apiKey }; }
+
+function cleanTrace(event: unknown, sessionId: string, index: number): BrowserActivity {
+  const source = event as { id?: string; type?: string; timestamp?: string; page?: { url?: string }; target?: { label?: string; text?: string; selector?: string }; value?: unknown; input?: unknown };
+  const type = String(source.type || "browser activity").slice(0, 80);
+  // Never retain typed values: traces can include credentials and form entries.
+  const target = type === "input" ? "Form field" : String(source.target?.label || source.target?.text || source.target?.selector || "").slice(0, 180) || undefined;
+  return { id: String(source.id || `${sessionId}-${source.timestamp || Date.now()}-${index}`), type, time: source.timestamp || new Date().toISOString(), url: source.page?.url?.slice(0, 2048), target, detail: type === "input" ? "Text entered (redacted)" : target, sessionId };
+}
+
+async function loadScape(request: Request, scapeId?: string) {
+  const user = await currentUser(request);
+  if (!user) return { error: Response.json({ error: "Sign in required" }, { status: 401 }) };
+  if (!scapeId) return { error: Response.json({ error: "Scape is required" }, { status: 400 }) };
+  const supabase = getSupabase();
+  const { data: row, error: readError } = await supabase.from("scapes").select("payload").eq("id", scapeId).maybeSingle();
+  const scape = row?.payload as Scape | undefined;
+  if (readError || !scape) return { error: Response.json({ error: "Scape not found" }, { status: 404 }) };
+  if (!canAccess(scape, user.id, user.email)) return { error: Response.json({ error: "You do not have access to this Scape" }, { status: 403 }) };
+  return { scape };
+}
 
 export async function POST(request: Request) {
   if (!databaseEnabled) return Response.json({ error: "Database is not configured" }, { status: 503 });
@@ -67,25 +89,20 @@ export async function POST(request: Request) {
     return Response.json({ error: "Remote browsing is not configured" }, { status: 503 });
   }
 
-  const user = await currentUser(request);
-  if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
   const { scapeId, target } = await request.json() as { scapeId?: string; target?: string };
-  if (!scapeId) return Response.json({ error: "Scape is required" }, { status: 400 });
+  const loaded = await loadScape(request, scapeId);
+  if (loaded.error) return loaded.error;
+  const scape = loaded.scape!;
 
-  const supabase = getSupabase();
-  const { data: row, error: readError } = await supabase.from("scapes").select("payload").eq("id", scapeId).maybeSingle();
-  const scape = row?.payload as Scape | undefined;
-  if (readError || !scape) return Response.json({ error: "Scape not found" }, { status: 404 });
-  if (!canAccess(scape, user.id, user.email)) return Response.json({ error: "You do not have access to this Scape" }, { status: 403 });
-
-  const response = await fetch("https://api.steel.dev/v1/sessions", {
+  const sessionRequest = scape.browser?.profileId ? { profileId: scape.browser.profileId, persistProfile: true } : { persistProfile: true };
+  let response = await fetch("https://api.steel.dev/v1/sessions", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "steel-api-key": apiKey },
-    // Start from Steel's documented baseline. Optional session settings can be
-    // rejected when an account plan does not support them.
-    body: JSON.stringify({}),
+    headers: steelHeaders(apiKey),
+    body: JSON.stringify(sessionRequest),
     cache: "no-store",
   }).catch(() => undefined);
+  // A profile can be unavailable on an entry plan. Browsing must still work.
+  if (response && !response.ok && Object.keys(sessionRequest).length) response = await fetch("https://api.steel.dev/v1/sessions", { method: "POST", headers: steelHeaders(apiKey), body: JSON.stringify({}), cache: "no-store" }).catch(() => undefined);
   let session: SteelSession | undefined;
   try { session = response ? await response.json() as SteelSession : undefined; } catch { session = undefined; }
   if (!response?.ok || !session) {
@@ -107,5 +124,32 @@ export async function POST(request: Request) {
       // The embedded Steel controls remain available if the initial navigation is delayed.
     }
   }
-  return Response.json({ sessionId: session.id, liveViewUrl: interactiveViewerUrl(viewer), expiresAt: session.expiresAt, destination: start });
+  return Response.json({ sessionId: session.id, profileId: session.profileId || scape.browser?.profileId, liveViewUrl: interactiveViewerUrl(viewer), expiresAt: session.expiresAt, destination: start });
+}
+
+export async function GET(request: Request) {
+  if (!databaseEnabled) return Response.json({ error: "Database is not configured" }, { status: 503 });
+  const apiKey = process.env.STEEL_API_KEY;
+  if (!apiKey) return Response.json({ error: "Remote browsing is not configured" }, { status: 503 });
+  const { searchParams } = new URL(request.url); const scapeId = searchParams.get("scapeId") || undefined; const sessionId = searchParams.get("sessionId");
+  const loaded = await loadScape(request, scapeId);
+  if (loaded.error) return loaded.error;
+  if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
+  const response = await fetch(`https://api.steel.dev/v1/sessions/${encodeURIComponent(sessionId)}/agent-traces`, { headers: { "steel-api-key": apiKey }, cache: "no-store" }).catch(() => undefined);
+  if (!response?.ok) return Response.json({ error: "Browser activity is temporarily unavailable." }, { status: 502 });
+  const data = await response.json() as { events?: unknown[] };
+  return Response.json({ events: (data.events || []).map((event, index) => cleanTrace(event, sessionId, index)) });
+}
+
+export async function DELETE(request: Request) {
+  if (!databaseEnabled) return Response.json({ error: "Database is not configured" }, { status: 503 });
+  const apiKey = process.env.STEEL_API_KEY;
+  if (!apiKey) return Response.json({ error: "Remote browsing is not configured" }, { status: 503 });
+  const { scapeId, sessionId } = await request.json() as { scapeId?: string; sessionId?: string };
+  const loaded = await loadScape(request, scapeId);
+  if (loaded.error) return loaded.error;
+  if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
+  const response = await fetch(`https://api.steel.dev/v1/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE", headers: { "steel-api-key": apiKey } }).catch(() => undefined);
+  if (!response?.ok) return Response.json({ error: "Could not close the browser session." }, { status: 502 });
+  return Response.json({ closed: true });
 }
