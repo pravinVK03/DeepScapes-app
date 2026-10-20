@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Icon } from "./icons";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -17,10 +17,20 @@ const navItems: NavItem[] = [];
 
 export function AppHeader({ compact = false }: { compact?: boolean }) { 
   const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname(); 
   const { user, loading, signOut } = useAuth();
   const username = typeof user?.user_metadata.username === "string" ? user.user_metadata.username : user?.email?.split("@")[0];
-  
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    function dismiss(event: PointerEvent) { if (!profileRef.current?.contains(event.target as Node)) setProfileOpen(false); }
+    function dismissWithKeyboard(event: KeyboardEvent) { if (event.key === "Escape") setProfileOpen(false); }
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", dismissWithKeyboard);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", dismissWithKeyboard); };
+  }, [profileOpen]);
+
   return (
     <header className="border-b border-[#d8dcd7]">
       <div className="flex w-full items-center justify-between px-5 py-4 sm:px-8 lg:px-12">
@@ -48,7 +58,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
         </div>
         <div className="flex items-center gap-2">
           {user && pathname.match(/^\/workspace\/[^/]+$/) && <Link href={`${pathname}/share`} className="hidden rounded-lg border border-[#dce1d9] px-3 py-2 text-sm sm:inline-flex">Share</Link>}
-          {user ? <div className="relative"><button onClick={() => setProfileOpen((open) => !open)} className="profile-trigger flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition" aria-expanded={profileOpen} aria-label="Open profile menu"><span className="grid h-6 w-6 place-items-center rounded-full bg-[#315443] text-xs font-semibold text-white">{username?.slice(0, 1).toUpperCase()}</span><span className="hidden max-w-28 truncate sm:inline">{username}</span></button>{profileOpen && <div className="profile-menu absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl border border-[#dce1d9] bg-white p-1 shadow-xl"><div className="border-b border-[#e5e8e2] px-3 py-2"><p className="truncate text-sm font-medium">{username}</p><p className="truncate text-xs text-[#718077]">{user.email}</p></div><Link onClick={() => setProfileOpen(false)} href="/scapes" className="block rounded-lg px-3 py-2 text-sm hover:bg-[#edf0df]">Your Scapes</Link><Link onClick={() => setProfileOpen(false)} href="/create" className="block rounded-lg px-3 py-2 text-sm hover:bg-[#edf0df]">Create Scape</Link><button onClick={() => { setProfileOpen(false); void signOut(); }} className="profile-signout block w-full rounded-lg px-3 py-2 text-left text-sm text-[#a95b54] hover:bg-[#edf0df]">Sign out</button></div>}</div> : !loading && !compact && <Link href="/login" className="hidden rounded-lg px-2 py-2 text-sm text-[#718077] sm:block">Sign in</Link>}
+          {user ? <div ref={profileRef} className="relative"><button onClick={() => setProfileOpen((open) => !open)} className="profile-trigger flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition" aria-expanded={profileOpen} aria-label="Open profile menu"><span className="grid h-6 w-6 place-items-center rounded-full bg-[#315443] text-xs font-semibold text-white">{username?.slice(0, 1).toUpperCase()}</span><span className="hidden max-w-28 truncate sm:inline">{username}</span></button>{profileOpen && <div className="profile-menu absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl border border-[#dce1d9] bg-white p-1 shadow-xl"><div className="border-b border-[#e5e8e2] px-3 py-2"><p className="truncate text-sm font-medium">{username}</p><p className="truncate text-xs text-[#718077]">{user.email}</p></div><Link onClick={() => setProfileOpen(false)} href="/scapes" className="block rounded-lg px-3 py-2 text-sm hover:bg-[#edf0df]">Your Scapes</Link><Link onClick={() => setProfileOpen(false)} href="/create" className="block rounded-lg px-3 py-2 text-sm hover:bg-[#edf0df]">Create Scape</Link><button onClick={() => { setProfileOpen(false); void signOut(); }} className="profile-signout block w-full rounded-lg px-3 py-2 text-left text-sm text-[#a95b54] hover:bg-[#edf0df]">Sign out</button></div>}</div> : !loading && !compact && <Link href="/login" className="hidden rounded-lg px-2 py-2 text-sm text-[#718077] sm:block">Sign in</Link>}
           {!compact && user && <Link href="/create" className="inline-flex items-center gap-2 rounded-lg bg-[#315443] px-3.5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#254235]">
             <Icon name="plus" className="h-4 w-4"/>
             <span className="hidden sm:inline">New Scape</span>
