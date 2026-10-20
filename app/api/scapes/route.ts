@@ -1,5 +1,5 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
-import { Scape } from "@/lib/mock-data";
+import { Activity, Scape } from "@/lib/mock-data";
 
 export const runtime = "nodejs";
 
@@ -39,9 +39,14 @@ export async function POST(request: Request) {
   const { data: existing } = await getSupabase().from("scapes").select("payload").eq("id", received.id).maybeSingle();
   const existingScape = existing?.payload as Scape | undefined;
   if (existingScape && !canAccess(existingScape, user.id, user.email, true)) return Response.json({ error: "Editor access is required" }, { status: 403 });
+  const actor = { actorId: user.id, actorName: user.user_metadata?.username || user.email?.split("@")[0] || "Collaborator", actorEmail: user.email };
+  const knownIds = new Set(existingScape?.activity.map((item) => item.id) || []);
+  const newActivity = (received.activity || []).filter((item) => !knownIds.has(item.id)).map((item) => ({ ...item, ...actor, time: new Date(item.time).toString() === "Invalid Date" ? new Date().toISOString() : item.time }));
+  const retainedActivity = existingScape?.activity || [];
+  const activity: Activity[] = [...newActivity, ...retainedActivity].slice(0, 1000);
   const scape: Scape = existingScape
-    ? { ...received, createdAt: existingScape.createdAt }
-    : { ...received, createdAt: received.createdAt ?? new Date().toISOString(), ownerId: user.id, collaborators: received.collaborators?.length ? received.collaborators : [{ id: user.id, name: user.email?.split("@")[0] ?? "Owner", email: user.email ?? "", permission: "edit" }] };
+    ? { ...received, ownerId: existingScape.ownerId, createdAt: existingScape.createdAt, collaborators: existingScape.ownerId === user.id ? received.collaborators : existingScape.collaborators, activity }
+    : { ...received, activity: (received.activity || []).map((item) => ({ ...item, ...actor })), createdAt: received.createdAt ?? new Date().toISOString(), ownerId: user.id, collaborators: received.collaborators?.length ? received.collaborators : [{ id: user.id, name: user.email?.split("@")[0] ?? "Owner", email: user.email ?? "", permission: "edit" }] };
   const { error } = await getSupabase().from("scapes").upsert(
     { id: scape.id, payload: scape, updated_at: new Date().toISOString() },
     { onConflict: "id" },
