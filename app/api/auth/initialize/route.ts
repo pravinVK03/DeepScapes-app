@@ -1,5 +1,6 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
 import { Scape } from "@/lib/mock-data";
+import { rateLimit, rateLimited } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,8 @@ export async function POST(request: Request) {
   const { data: userData, error: userError } = await supabase.auth.getUser(token);
   const user = userData.user;
   if (userError || !user?.email) return Response.json({ error: "Session is invalid" }, { status: 401 });
+  const quota = rateLimit(request, "auth-initialize", 12, 60 * 60 * 1000, user.id);
+  if (!quota.allowed) return rateLimited(quota.retryAfter);
   let username = usernameFor(user.email, user.user_metadata as Record<string, unknown>);
   const { data: nameOwner } = await supabase.from("profiles").select("id").eq("username", username).maybeSingle();
   if (nameOwner && nameOwner.id !== user.id) username = `${username.slice(0, 24)}-${user.id.slice(0, 6)}`;

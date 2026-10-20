@@ -1,5 +1,6 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
 import { Activity, Scape } from "@/lib/mock-data";
+import { rateLimit, rateLimited } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -20,6 +21,8 @@ export async function GET(request: Request) {
   if (!databaseEnabled) return Response.json({ scapes: [], connected: false });
   const user = await currentUser(request);
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
+  const quota = rateLimit(request, "scape-read", 120, 60 * 60 * 1000, user.id);
+  if (!quota.allowed) return rateLimited(quota.retryAfter);
   const { data, error } = await getSupabase()
     .from("scapes")
     .select("payload, created_at")
@@ -35,6 +38,8 @@ export async function POST(request: Request) {
   if (!databaseEnabled) return Response.json({ connected: false }, { status: 503 });
   const user = await currentUser(request);
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
+  const quota = rateLimit(request, "scape-write", 90, 60 * 60 * 1000, user.id);
+  if (!quota.allowed) return rateLimited(quota.retryAfter);
   const received = await request.json() as Scape;
   const { data: existing } = await getSupabase().from("scapes").select("payload").eq("id", received.id).maybeSingle();
   const existingScape = existing?.payload as Scape | undefined;
@@ -59,6 +64,8 @@ export async function DELETE(request: Request) {
   if (!databaseEnabled) return Response.json({ connected: false }, { status: 503 });
   const user = await currentUser(request);
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
+  const quota = rateLimit(request, "scape-delete", 10, 60 * 60 * 1000, user.id);
+  if (!quota.allowed) return rateLimited(quota.retryAfter);
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return Response.json({ error: "Scape id is required" }, { status: 400 });
   const { data: existing } = await getSupabase().from("scapes").select("payload").eq("id", id).maybeSingle();

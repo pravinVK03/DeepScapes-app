@@ -1,5 +1,6 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
 import { BrowserActivity, Scape } from "@/lib/mock-data";
+import { rateLimit, rateLimited } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -79,7 +80,7 @@ async function loadScape(request: Request, scapeId?: string) {
   const scape = row?.payload as Scape | undefined;
   if (readError || !scape) return { error: Response.json({ error: "Scape not found" }, { status: 404 }) };
   if (!canAccess(scape, user.id, user.email)) return { error: Response.json({ error: "You do not have access to this Scape" }, { status: 403 }) };
-  return { scape };
+  return { scape, user };
 }
 
 export async function POST(request: Request) {
@@ -93,6 +94,10 @@ export async function POST(request: Request) {
   const loaded = await loadScape(request, scapeId);
   if (loaded.error) return loaded.error;
   const scape = loaded.scape!;
+  const quota = rateLimit(request, "steel-session", 4, 60 * 60 * 1000, loaded.user!.id);
+  if (!quota.allowed) return rateLimited(quota.retryAfter);
+  const dailyQuota = rateLimit(request, "steel-session-daily", 20, 24 * 60 * 60 * 1000, loaded.user!.id);
+  if (!dailyQuota.allowed) return rateLimited(dailyQuota.retryAfter);
 
   const sessionRequest = scape.browser?.profileId ? { profileId: scape.browser.profileId, persistProfile: true } : { persistProfile: true };
   let response = await fetch("https://api.steel.dev/v1/sessions", {
@@ -134,6 +139,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url); const scapeId = searchParams.get("scapeId") || undefined; const sessionId = searchParams.get("sessionId");
   const loaded = await loadScape(request, scapeId);
   if (loaded.error) return loaded.error;
+  const quota = rateLimit(request, "steel-traces", 20, 60 * 1000, loaded.user!.id);
+  if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
   const response = await fetch(`https://api.steel.dev/v1/sessions/${encodeURIComponent(sessionId)}/agent-traces`, { headers: { "steel-api-key": apiKey }, cache: "no-store" }).catch(() => undefined);
   if (!response?.ok) return Response.json({ error: "Browser activity is temporarily unavailable." }, { status: 502 });
@@ -148,6 +155,8 @@ export async function DELETE(request: Request) {
   const { scapeId, sessionId } = await request.json() as { scapeId?: string; sessionId?: string };
   const loaded = await loadScape(request, scapeId);
   if (loaded.error) return loaded.error;
+  const quota = rateLimit(request, "steel-close", 12, 60 * 60 * 1000, loaded.user!.id);
+  if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
   const response = await fetch(`https://api.steel.dev/v1/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE", headers: { "steel-api-key": apiKey } }).catch(() => undefined);
   if (!response?.ok) return Response.json({ error: "Could not close the browser session." }, { status: 502 });

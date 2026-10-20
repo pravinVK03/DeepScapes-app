@@ -1,5 +1,6 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
 import { Scape } from "@/lib/mock-data";
+import { rateLimit, rateLimited } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -48,6 +49,8 @@ export async function POST(request: Request) {
     const body = await request.json() as { action?: "prepare" | "complete"; scapeId?: string; fileName?: string; mimeType?: string; path?: string };
     const access = await getEditableScape(request, body.scapeId ?? "");
     if ("error" in access) return Response.json({ error: access.error }, { status: access.status });
+    const quota = rateLimit(request, body.action === "prepare" ? "upload-prepare" : "upload-complete", body.action === "prepare" ? 20 : 40, 60 * 60 * 1000, access.user.id);
+    if (!quota.allowed) return rateLimited(quota.retryAfter);
     const bucketError = await ensureBucket();
     if (bucketError) return Response.json({ error: `Storage setup failed: ${bucketError}` }, { status: 500 });
     if (body.action === "prepare") {
@@ -70,6 +73,8 @@ export async function POST(request: Request) {
   if (!(file instanceof File)) return Response.json({ error: "A file is required" }, { status: 400 });
   const access = await getEditableScape(request, scapeId);
   if ("error" in access) return Response.json({ error: access.error }, { status: access.status });
+  const quota = rateLimit(request, "upload-legacy", 12, 60 * 60 * 1000, access.user.id);
+  if (!quota.allowed) return rateLimited(quota.retryAfter);
   const bucketError = await ensureBucket();
   if (bucketError) return Response.json({ error: `Storage setup failed: ${bucketError}` }, { status: 500 });
   const path = `${access.user.id}/${access.scape.id}/${crypto.randomUUID()}-${safeFileName(file.name)}`;

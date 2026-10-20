@@ -1,9 +1,12 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
 import { templates, Template } from "@/lib/mock-data";
+import { rateLimit, rateLimited } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const quota = rateLimit(request, "templates", 30, 60 * 60 * 1000);
+  if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!databaseEnabled) return Response.json({ templates, connected: false });
   const supabase = getSupabase();
   const { error: seedError } = await supabase.from("templates").upsert(
