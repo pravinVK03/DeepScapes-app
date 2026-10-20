@@ -51,9 +51,10 @@ function interactiveViewerUrl(value: string) {
   return url.toString();
 }
 
-function steelConnectUrl(value: string, apiKey: string) {
-  const url = new URL(value);
+function steelConnectUrl(sessionId: string, apiKey: string) {
+  const url = new URL("wss://connect.steel.dev");
   url.searchParams.set("apiKey", apiKey);
+  url.searchParams.set("sessionId", sessionId);
   return url.toString();
 }
 
@@ -80,18 +81,28 @@ export async function POST(request: Request) {
   const response = await fetch("https://api.steel.dev/v1/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "steel-api-key": apiKey },
-    body: JSON.stringify({ timeout: 1_800_000, inactivityTimeout: 300_000, dimensions: { width: 1440, height: 960 }, debugConfig: { interactive: true } }),
+    // Start from Steel's documented baseline. Optional session settings can be
+    // rejected when an account plan does not support them.
+    body: JSON.stringify({}),
     cache: "no-store",
   }).catch(() => undefined);
   let session: SteelSession | undefined;
   try { session = response ? await response.json() as SteelSession : undefined; } catch { session = undefined; }
-  if (!response?.ok || !session) return Response.json({ error: "Steel could not start a remote browser. Check the Steel account and try again." }, { status: 502 });
+  if (!response?.ok || !session) {
+    const status = response?.status;
+    const message = status === 401 || status === 403
+      ? "Steel rejected the configured API key. Create or update STEEL_API_KEY in Vercel, then retry."
+      : status === 402 || status === 429
+        ? "Steel account usage is unavailable. Check the Steel account credits or rate limit, then retry."
+        : "Steel could not start a remote browser. Please retry shortly.";
+    return Response.json({ error: message, providerStatus: status }, { status: 502 });
+  }
   const viewer = session.debugUrl ?? session.sessionViewerUrl;
   if (!viewer) return Response.json({ error: "Steel did not provide a browser viewer." }, { status: 502 });
   const start = destination(target);
-  if (session.websocketUrl) {
+  if (session.id) {
     try {
-      await openRemotePage(steelConnectUrl(session.websocketUrl, apiKey), start.url);
+      await openRemotePage(steelConnectUrl(session.id, apiKey), start.url);
     } catch {
       // The embedded Steel controls remain available if the initial navigation is delayed.
     }
