@@ -96,8 +96,8 @@ export default function WorkspaceScreen() {
 
 function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scape; resumeRequest?: ResumeRequest; onBrowserChange: (browser: BrowserState) => void }) {
   const [liveViewUrl, setLiveViewUrl] = useState(scape.browser?.liveViewUrl || "");
-  const [input, setInput] = useState(scape.browser?.lastTarget || "");
-  const [sessionName, setSessionName] = useState(scape.browser?.activeSessionName || "");
+  const [input, setInput] = useState("");
+  const [sessionName, setSessionName] = useState("");
   const [opening, setOpening] = useState(false); const [ending, setEnding] = useState(false); const [message, setMessage] = useState("");
   const [fullScreen, setFullScreen] = useState(false); const [paused, setPaused] = useState(false); const [viewerOpen, setViewerOpen] = useState(false); const [viewerKey, setViewerKey] = useState(0); const [disconnected, setDisconnected] = useState(false);
   const sessionId = scape.browser?.activeSessionId;
@@ -185,6 +185,11 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
   }
   async function open(targetOverride?: string) {
     const target = targetOverride ?? input;
+    if (!viewerOpen) {
+      if (sessionId && !(await releaseActive())) return;
+      await startSession(target);
+      return;
+    }
     if (!target.trim()) { setMessage("Enter a search or website first."); return; }
     if (!sessionId) { await startSession(target); return; }
     setOpening(true); setMessage("Opening in the current session…");
@@ -205,6 +210,13 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     const endedSnapshot = await releaseActive(); if (!endedSnapshot) return;
     const activeTab = saved.tabs[saved.activeTab ?? 0] || saved.tabs.find((tab) => tab.active);
     await startSession(activeTab?.url || "", { key: crypto.randomUUID(), mode: "resume", name: saved.name, snapshot: saved });
+  }
+  function continueSavedSession() {
+    setInput(browserRef.current?.lastTarget || "");
+    setSessionName(browserRef.current?.activeSessionName || "");
+    setViewerOpen(true);
+    setViewerKey((value) => value + 1);
+    setMessage("Connecting to your saved browser session…");
   }
   useEffect(() => { releaseActiveRef.current = releaseActive; startSessionRef.current = startSession; });
   useEffect(() => {
@@ -236,13 +248,13 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     <div className="flex flex-wrap items-center gap-2 border-b border-[#e5e8e2] p-3 sm:p-4">
       <div className="mr-auto min-w-[10rem]"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#718077]">Browse</p><input value={sessionName} onChange={(event) => setSessionName(event.target.value)} onBlur={saveSessionName} placeholder="Name this session" className="mt-0.5 w-full bg-transparent text-sm font-semibold outline-none placeholder:text-[#9aa39d]" aria-label="Browser session name" /></div>
       <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && !opening && !ending && void open()} placeholder="Search the web or enter a website" className="min-w-0 flex-1 rounded-lg border border-[#dce1d9] bg-white px-3 py-2 text-sm outline-none sm:max-w-sm" />
-      <button onClick={() => void open()} disabled={opening || ending} className="shrink-0 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{opening ? "Opening…" : liveViewUrl ? "Go" : "Open"}</button>
-      {liveViewUrl && !viewerOpen && <button onClick={() => { setViewerOpen(true); setViewerKey((value) => value + 1); setMessage("Connecting to your saved browser session…"); }} disabled={ending} className="shrink-0 rounded-lg border border-[#315443] px-3 py-2 text-sm font-medium text-[#315443] disabled:opacity-60">Continue session</button>}
+      <button onClick={() => void open()} disabled={opening || ending} className="shrink-0 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{opening ? "Opening…" : viewerOpen ? "Go" : "Open"}</button>
+      {liveViewUrl && !viewerOpen && <button onClick={continueSavedSession} disabled={ending} className="shrink-0 rounded-lg border border-[#315443] px-3 py-2 text-sm font-medium text-[#315443] disabled:opacity-60">Continue session</button>}
       {liveViewUrl && viewerOpen && <><button onClick={() => setPaused((value) => !value)} disabled={ending} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{paused ? "Resume view" : "Pause"}</button><button onClick={() => void reconnect()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{disconnected ? "Restore" : "Reconnect"}</button><button onClick={() => setFullScreen((value) => !value)} className="shrink-0 rounded-lg border px-3 py-2 text-sm">{fullScreen ? "Exit full screen" : "Full screen"}</button></>}
       {liveViewUrl && <button onClick={() => void releaseActive()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{ending ? "Saving…" : "Save & end"}</button>}
     </div>
     {message && <p role="status" aria-live="polite" className="border-b border-[#e5e8e2] px-4 py-2 text-sm text-[#718077]">{message}</p>}
-    {liveViewUrl && !viewerOpen && <div className="grid min-h-56 place-items-center border-t border-[#e5e8e2] bg-[#f7f8f4] px-5 py-10 text-center"><div><p className="font-medium text-[#34443a]">Browser ready when you are</p><p className="mt-1 text-sm text-[#718077]">This saved session will not connect or use browser resources until you open it.</p><button onClick={() => { setViewerOpen(true); setViewerKey((value) => value + 1); setMessage("Connecting to your saved browser session…"); }} className="mt-4 rounded-lg bg-[#315443] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#243f32]">Continue session</button></div></div>}
+    {!viewerOpen && <div className="min-h-56 border-t border-[#e5e8e2] bg-white" aria-label="Browser is closed" />}
     {liveViewUrl && viewerOpen && <div className={`relative border-t border-[#e5e8e2] ${fullScreen ? "min-h-0 flex-1" : ""}`}><iframe key={viewerKey} title="DeepScapes remote browser" src={liveViewUrl} loading="eager" onLoad={() => setMessage("")} className={`${fullScreen ? "h-full min-h-[30rem]" : "h-[42rem]"} w-full border-0 bg-white ${paused ? "pointer-events-none opacity-70" : ""}`} allow="clipboard-read; clipboard-write" />{paused && <div className="absolute inset-0 grid place-items-center bg-white/45 backdrop-blur-[1px]"><button onClick={() => setPaused(false)} className="rounded-full bg-[#315443] px-5 py-3 text-sm font-medium text-white shadow-lg">Resume browsing</button></div>}</div>}
   </section>;
 }

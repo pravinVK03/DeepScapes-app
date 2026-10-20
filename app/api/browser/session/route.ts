@@ -19,7 +19,7 @@ function canAccess(scape: Scape, userId: string, email?: string) {
 
 function destination(value?: string) {
   const input = value?.trim();
-  if (!input) return { url: "https://www.google.com", label: "Google" };
+  if (!input) return { url: "about:blank", label: "Blank tab" };
   if (/^https?:\/\//i.test(input)) return { url: input, label: input };
   if (input.includes(".") && !/\s/.test(input)) return { url: "https://" + input, label: input };
   return { url: "https://www.google.com/search?q=" + encodeURIComponent(input), label: input };
