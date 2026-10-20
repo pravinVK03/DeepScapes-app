@@ -63,11 +63,22 @@ type SteelSession = { id?: string; debugUrl?: string; sessionViewerUrl?: string;
 
 function steelHeaders(apiKey: string) { return { "Content-Type": "application/json", "steel-api-key": apiKey }; }
 
+function safeTraceText(value: unknown) {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (typeof value === "number") return String(value);
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ["label", "name", "text", "ariaLabel", "selector", "role"]) {
+    const candidate = record[key]; if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return undefined;
+}
+
 function cleanTrace(event: unknown, sessionId: string, index: number): BrowserActivity {
-  const source = event as { id?: string; type?: string; timestamp?: string; page?: { url?: string }; target?: { label?: string; text?: string; selector?: string }; value?: unknown; input?: unknown };
+  const source = event as { id?: string; type?: string; timestamp?: string; page?: { url?: string }; target?: unknown; value?: unknown; input?: unknown };
   const type = String(source.type || "browser activity").slice(0, 80);
   // Never retain typed values: traces can include credentials and form entries.
-  const target = type === "input" ? "Form field" : String(source.target?.label || source.target?.text || source.target?.selector || "").slice(0, 180) || undefined;
+  const target = type === "input" ? "Form field" : safeTraceText(source.target)?.slice(0, 180);
   return { id: String(source.id || `${sessionId}-${source.timestamp || Date.now()}-${index}`), type, time: source.timestamp || new Date().toISOString(), url: source.page?.url?.slice(0, 2048), target, detail: type === "input" ? "Text entered (redacted)" : target, sessionId };
 }
 
