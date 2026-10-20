@@ -57,6 +57,9 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 STEEL_API_KEY=your-steel-api-key
+RESEND_API_KEY=your-resend-api-key
+FEEDBACK_FROM_EMAIL=DeepScapes Feedback <feedback@your-verified-domain.com>
+FEEDBACK_TO_EMAIL=padmanathan.kdev@gmail.com
 ```
 
 | Variable | Scope | Purpose |
@@ -66,6 +69,9 @@ STEEL_API_KEY=your-steel-api-key
 | `SUPABASE_URL` | Server | Supabase project URL used by Route Handlers. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only | Database and storage access through the backend. Never expose this value publicly. |
 | `STEEL_API_KEY` | Server only | Creates, resumes, traces, and closes remote browser sessions. |
+| `RESEND_API_KEY` | Server only | Sends an email copy of each saved feedback submission through Resend. |
+| `FEEDBACK_FROM_EMAIL` | Server only | Verified sender used for feedback notifications. Defaults to Resend's onboarding sender for testing. |
+| `FEEDBACK_TO_EMAIL` | Server only | Feedback notification recipient. Defaults to `padmanathan.kdev@gmail.com`. |
 
 Restart the development server after changing environment variables.
 
@@ -85,6 +91,8 @@ https://deepscapes.vercel.app/login
 ```
 
 The application creates its private `deepscapes-resources` storage bucket when the first authenticated upload is prepared. Files upload directly from the browser with a short-lived signed upload token; the server never exposes the service-role key.
+
+Feedback is first saved as JSON in the private `deepscapes-feedback` bucket and then emailed through Resend. Email uses the feedback ID as an idempotency key to avoid duplicate copies. A mail-provider failure does not discard the stored submission.
 
 ## Authentication and permissions
 

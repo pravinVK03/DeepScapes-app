@@ -47,10 +47,10 @@ function FeedbackForm() {
     setSending(true);
     const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
     const response = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ category, rating: rating || undefined, message, page: window.location.pathname }) }).catch(() => undefined);
-    let data: { error?: string; supportEmail?: string } | undefined;
+    let data: { error?: string; supportEmail?: string; emailed?: boolean } | undefined;
     try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
     if (!response?.ok) { setStatus(data?.error || "Feedback could not be sent. Please try again."); setFallbackEmail(data?.supportEmail || "padmanathan.kdev@gmail.com"); setSending(false); return; }
-    setMessage(""); setRating(0); setStatus("Thank you — your feedback was saved."); setSending(false);
+    setMessage(""); setRating(0); setStatus(data?.emailed === false ? "Thank you — saved, but the email copy could not be delivered." : "Thank you — your feedback was saved and emailed."); setSending(false);
   }
 
   return <footer className="mt-16 border-t border-white/20 bg-black text-white">

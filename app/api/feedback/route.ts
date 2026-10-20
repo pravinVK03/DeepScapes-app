@@ -1,4 +1,5 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
+import { sendFeedbackCopy, type FeedbackEmail } from "@/lib/feedback-email";
 import { rateLimit, rateLimited } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -42,14 +43,16 @@ export async function POST(request: Request) {
   const bucketError = await ensureBucket();
   if (bucketError) return Response.json({ error: "Feedback storage could not be prepared." }, { status: 500 });
   const createdAt = new Date().toISOString();
-  const payload = JSON.stringify({ id: crypto.randomUUID(), userId: user.id, email: user.email, category, rating, message, page: body.page?.slice(0, 300), createdAt }, null, 2);
+  const feedback: FeedbackEmail = { id: crypto.randomUUID(), userId: user.id, email: user.email, category, rating, message, page: body.page?.slice(0, 300), createdAt };
+  const payload = JSON.stringify(feedback, null, 2);
   const date = createdAt.slice(0, 10);
-  const path = `${date}/${user.id}/${crypto.randomUUID()}.json`;
+  const path = `${date}/${user.id}/${feedback.id}.json`;
   const bytes = new TextEncoder().encode(payload);
   const { error } = await supabase.storage.from(bucket).upload(path, bytes.buffer, { contentType: "application/json; charset=utf-8", upsert: false });
   if (error) {
     console.error("Feedback upload failed", { code: error.name, statusCode: error.statusCode });
     return Response.json({ error: "Feedback could not be saved. Please try again.", supportEmail: "padmanathan.kdev@gmail.com" }, { status: 500 });
   }
-  return Response.json({ saved: true }, { status: 201 });
+  const email = await sendFeedbackCopy(feedback, new URL(request.url).origin);
+  return Response.json({ saved: true, emailed: email.sent }, { status: 201 });
 }
