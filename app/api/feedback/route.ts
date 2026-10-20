@@ -8,12 +8,6 @@ const bucket = "deepscapes-feedback";
 const categories = new Set(["idea", "issue", "experience", "other"]);
 let bucketReady: Promise<string | undefined> | undefined;
 
-function validEmail(value: unknown) {
-  if (typeof value !== "string") return undefined;
-  const email = value.trim().toLowerCase();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 320 ? email : undefined;
-}
-
 async function ensureBucket() {
   bucketReady ??= (async () => {
     const supabase = getSupabase();
@@ -30,7 +24,7 @@ async function ensureBucket() {
 
 export async function POST(request: Request) {
   if (!databaseEnabled) return Response.json({ error: "Feedback storage is unavailable." }, { status: 503 });
-  const body = await request.json() as { category?: string; message?: string; rating?: number; page?: string; email?: string };
+  const body = await request.json() as { category?: string; message?: string; rating?: number; page?: string };
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   const supabase = getSupabase();
   const { data } = token ? await supabase.auth.getUser(token) : { data: { user: null } };
@@ -47,7 +41,7 @@ export async function POST(request: Request) {
   const bucketError = await ensureBucket();
   if (bucketError) return Response.json({ error: "Feedback storage could not be prepared." }, { status: 500 });
   const createdAt = new Date().toISOString();
-  const feedback: FeedbackEmail = { id: crypto.randomUUID(), userId: user?.id || "anonymous", email: validEmail(body.email) || user?.email, category, rating, message, page: body.page?.slice(0, 300), createdAt };
+  const feedback: FeedbackEmail = { id: crypto.randomUUID(), userId: user?.id || "anonymous", email: user?.email, category, rating, message, page: body.page?.slice(0, 300), createdAt };
   const payload = JSON.stringify(feedback, null, 2);
   const date = createdAt.slice(0, 10);
   const path = `${date}/${user?.id || "anonymous"}/${feedback.id}.json`;

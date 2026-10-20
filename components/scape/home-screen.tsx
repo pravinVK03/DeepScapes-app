@@ -37,7 +37,6 @@ function FeedbackForm() {
   const [category, setCategory] = useState("experience");
   const [rating, setRating] = useState(0);
   const [message, setMessage] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
   const [status, setStatus] = useState("");
   const [sending, setSending] = useState(false);
   const [fallbackEmail, setFallbackEmail] = useState("");
@@ -56,12 +55,12 @@ function FeedbackForm() {
     if (message.trim().length < 10) { setStatus("Please add at least 10 characters."); return; }
     setSending(true);
     const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
-    const response = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ category, rating: rating || undefined, message, email: contactEmail || undefined, page: window.location.pathname }) }).catch(() => undefined);
+    const response = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ category, rating: rating || undefined, message, page: window.location.pathname }) }).catch(() => undefined);
     let data: { error?: string; supportEmail?: string; emailed?: boolean; emailStatus?: string } | undefined;
     try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
     if (!response?.ok) { setStatus(data?.error || "Feedback could not be sent. Please try again."); setFallbackEmail(data?.supportEmail || "padmanathan.kdev@gmail.com"); setSending(false); return; }
     if (data?.emailed === false) { setStatus(emailFailureText(data.emailStatus)); setFallbackEmail(data.supportEmail || "padmanathan.kdev@gmail.com"); }
-    else { setMessage(""); setContactEmail(""); setRating(0); setStatus("Thank you — your feedback was saved and emailed."); }
+    else { setMessage(""); setRating(0); setStatus("Thank you — your feedback was saved and emailed."); }
     setSending(false);
   }
 
@@ -71,7 +70,7 @@ function FeedbackForm() {
       <form onSubmit={submit} className="feedback-panel rounded-2xl border p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap gap-2">{[["experience", "Experience"], ["idea", "Idea"], ["issue", "Issue"], ["other", "Other"]].map(([value, label]) => <button key={value} type="button" data-active={category === value} onClick={() => setCategory(value)} className="feedback-category rounded-full border border-white/20 px-3 py-1.5 text-xs font-medium text-white/65 transition hover:border-[#d4af37] hover:text-[#d4af37]">{label}</button>)}</div>
         <div className="mt-5 flex flex-wrap items-center gap-3"><span className="text-sm text-white/60">Rating</span><div className="flex gap-1" role="radiogroup" aria-label="Rating">{[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" role="radio" data-active={value <= rating} onClick={() => setRating(value)} aria-label={`${value} star${value === 1 ? "" : "s"}`} aria-checked={rating === value} className="feedback-star group grid h-12 w-12 place-items-center rounded-lg transition hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4af37]"><svg viewBox="0 0 24 24" className="h-10 w-10 transition" aria-hidden="true"><path d="m12 2.4 2.86 5.79 6.39.93-4.62 4.5 1.09 6.36L12 16.97l-5.72 3.01 1.09-6.36-4.62-4.5 6.39-.93L12 2.4Z" /></svg></button>)}</div></div>
-        <label className="mt-5 block text-sm font-medium text-white">Your feedback<textarea required minLength={10} maxLength={2000} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="What should we improve?" className="mt-2 h-28 w-full resize-none rounded-xl border border-white/15 bg-black px-4 py-3 font-normal text-white outline-none transition placeholder:text-white/35 focus:border-white/50 focus:ring-4 focus:ring-white/10" /></label><label className="mt-4 block text-xs font-medium text-white/70">Email for a reply <span className="font-normal text-white/40">(optional)</span><input type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} placeholder="you@example.com" className="mt-2 w-full rounded-lg border border-white/15 bg-black px-3 py-2 text-sm font-normal text-white outline-none transition placeholder:text-white/35 focus:border-white/50 focus:ring-4 focus:ring-white/10" /></label>
+        <label className="mt-5 block text-sm font-medium text-white">Your feedback<textarea required minLength={10} maxLength={2000} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="What should we improve?" className="mt-2 h-28 w-full resize-none rounded-xl border border-white/15 bg-black px-4 py-3 font-normal text-white outline-none transition placeholder:text-white/35 focus:border-white/50 focus:ring-4 focus:ring-white/10" /></label>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div><p role="status" aria-live="polite" className={`text-sm ${status.includes("saved") ? "text-[#9ed6b5]" : "text-[#ff9b92]"}`}>{status}</p>{fallbackEmail && <a className="mt-1 inline-block text-xs text-white/60 underline hover:text-white" href={`mailto:${fallbackEmail}?subject=DeepScapes%20feedback&body=${encodeURIComponent(message)}`}>Email feedback instead</a>}</div><button disabled={sending} className="feedback-submit rounded-lg border px-4 py-2.5 text-sm font-medium shadow-sm transition duration-200 active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none">{sending ? "Sending…" : "Send feedback"}</button></div>
       </form>
       <section className="border-t border-white/15 pt-7 lg:col-span-2"><p className="text-xs font-medium uppercase tracking-[.18em] text-white/45">Team</p><div className="mt-5 grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">{[["Padmanathan K", "Product Designer"], ["Keerthi Vasan D", "UI Designer"], ["Jothi Ganesh P", "UX Designer"], ["Manoj Kumar M", "UX Researcher"]].map(([name, role]) => <div key={name}><h3 className="text-base font-semibold text-white">{name}</h3><p className="mt-2 text-sm text-white opacity-55">{role}</p></div>)}</div></section>
