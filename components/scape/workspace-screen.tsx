@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/ui/app-header";
 import { Icon } from "@/components/ui/icons";
 import { BrowserActivity, BrowserState, Resource, ResourceType, Scape } from "@/lib/mock-data";
@@ -51,21 +51,43 @@ export default function WorkspaceScreen() {
 }
 
 function InScapeBrowser({ scape, onBrowserChange }: { scape: Scape; onBrowserChange: (browser: BrowserState) => void }) {
-  const [liveViewUrl, setLiveViewUrl] = useState(scape.browser?.liveViewUrl || ""); const [input, setInput] = useState(scape.browser?.lastTarget || ""); const [opening, setOpening] = useState(false); const [message, setMessage] = useState("");
+  const [liveViewUrl, setLiveViewUrl] = useState(scape.browser?.liveViewUrl || ""); const [input, setInput] = useState(scape.browser?.lastTarget || ""); const [opening, setOpening] = useState(false); const [ending, setEnding] = useState(false); const [message, setMessage] = useState("");
   const sessionId = scape.browser?.activeSessionId;
-  const persist = useCallback((next: Partial<BrowserState>) => onBrowserChange({ ...scape.browser, ...next, updatedAt: new Date().toISOString() }), [onBrowserChange, scape.browser]);
-  const syncActivity = useCallback(async () => {
+  const browserRef = useRef(scape.browser); const onBrowserChangeRef = useRef(onBrowserChange);
+  useEffect(() => { browserRef.current = scape.browser; onBrowserChangeRef.current = onBrowserChange; }, [onBrowserChange, scape.browser]);
+  const persist = useCallback((next: Partial<BrowserState>) => {
+    const browser = { ...browserRef.current, ...next, updatedAt: new Date().toISOString() };
+    browserRef.current = browser; onBrowserChangeRef.current(browser);
+  }, []);
+  const syncActivity = useCallback(async (save = true) => {
     if (!sessionId) return;
     const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token; if (!token) return;
     const response = await fetch(`/api/browser/session?scapeId=${encodeURIComponent(scape.id)}&sessionId=${encodeURIComponent(sessionId)}`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined);
     if (!response?.ok) return;
     const data = await response.json() as { events?: WebLog[] };
-    const merged = [...(scape.browser?.activity || []), ...(data.events || [])].filter((item, index, all) => all.findIndex((entry) => entry.id === item.id) === index).sort((left, right) => new Date(right.time).getTime() - new Date(left.time).getTime()).slice(0, 750);
-    persist({ activity: merged });
-  }, [persist, scape.browser?.activity, scape.id, sessionId]);
-  useEffect(() => { if (!sessionId) return; void syncActivity(); const timer = window.setInterval(() => void syncActivity(), 12000); return () => window.clearInterval(timer); }, [sessionId, syncActivity]);
+    const current = browserRef.current?.activity || [];
+    const merged = [...current, ...(data.events || [])].filter((item, index, all) => all.findIndex((entry) => entry.id === item.id) === index).sort((left, right) => new Date(right.time).getTime() - new Date(left.time).getTime()).slice(0, 750);
+    if (save && merged.length !== current.length) persist({ activity: merged });
+    return merged;
+  }, [persist, scape.id, sessionId]);
+  useEffect(() => { if (!sessionId) return; void syncActivity(); const timer = window.setInterval(() => void syncActivity(), 30_000); return () => window.clearInterval(timer); }, [sessionId, syncActivity]);
+  async function releaseActive() {
+    if (!sessionId) return true;
+    setEnding(true); setMessage("Saving this browsing session…");
+    const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
+    if (!token) { setEnding(false); setMessage("Sign in again to save and end this session."); return false; }
+    const activity = await syncActivity(false) || browserRef.current?.activity || [];
+    const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    const response = await fetch("/api/browser/session", { method: "DELETE", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId: scape.id, sessionId }), signal: controller.signal }).catch(() => undefined); window.clearTimeout(timeout);
+    let data: { error?: string } | undefined; try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
+    if (!response?.ok) { setEnding(false); setMessage(data?.error || "The browser could not be ended. Please retry."); return false; }
+    const ended: WebLog = { id: `session-ended-${sessionId}`, type: "session ended", time: new Date().toISOString(), target: browserRef.current?.lastTarget, detail: "Browser state and activity saved", sessionId };
+    persist({ activeSessionId: undefined, liveViewUrl: undefined, activity: [ended, ...activity.filter((item) => item.id !== ended.id)] });
+    setLiveViewUrl(""); setEnding(false); setMessage("Browser session saved and ended."); return true;
+  }
   async function open() {
     setOpening(true); setMessage("");
+    if (sessionId && !(await releaseActive())) { setOpening(false); return; }
     const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
     if (!token) { setOpening(false); setMessage("Sign in to open your private browser."); return; }
     const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 15_000);
@@ -74,10 +96,9 @@ function InScapeBrowser({ scape, onBrowserChange }: { scape: Scape; onBrowserCha
     try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
     if (!response?.ok || !data?.liveViewUrl) { setOpening(false); setMessage(data?.error ?? "Could not start the remote browser."); return; }
     const event: WebLog = { id: `session-${data.sessionId}`, type: "session started", time: new Date().toISOString(), url: data.destination?.url, target: data.destination?.label, detail: "Remote browser opened", sessionId: data.sessionId || "" };
-    persist({ activeSessionId: data.sessionId, profileId: data.profileId, liveViewUrl: data.liveViewUrl, lastTarget: input, lastUrl: data.destination?.url, activity: [event, ...(scape.browser?.activity || [])] }); setLiveViewUrl(data.liveViewUrl); setOpening(false);
+    persist({ activeSessionId: data.sessionId, profileId: data.profileId, liveViewUrl: data.liveViewUrl, lastTarget: input, lastUrl: data.destination?.url, activity: [event, ...(browserRef.current?.activity || [])] }); setLiveViewUrl(data.liveViewUrl); setOpening(false);
   }
-  async function end() { if (!sessionId) return; const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token; await fetch("/api/browser/session", { method: "DELETE", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId: scape.id, sessionId }) }).catch(() => undefined); persist({ activeSessionId: undefined, liveViewUrl: undefined }); setLiveViewUrl(""); }
-  return <section className="overflow-hidden rounded-2xl border border-[#e5e8e2] bg-white"><div className="flex flex-wrap items-center justify-between gap-3 p-4"><p className="font-semibold">Browse</p><div className="flex w-full max-w-2xl gap-2 sm:w-auto"><input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void open()} placeholder="Search the web or enter a website" className="min-w-0 flex-1 rounded-lg border border-[#dce1d9] bg-white px-3 py-2 text-sm outline-none sm:w-72" /><button onClick={() => void open()} disabled={opening} className="shrink-0 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{opening ? "Starting…" : liveViewUrl ? "New session" : "Open"}</button>{liveViewUrl && <><button onClick={() => void end()} className="shrink-0 rounded-lg border px-3 py-2 text-sm">Save & end</button><a href={liveViewUrl} target="_blank" rel="noreferrer" className="shrink-0 rounded-lg border px-3 py-2 text-sm">Full screen ↗</a></>}</div></div>{message && <p className="border-t border-[#e5e8e2] px-4 py-3 text-sm text-[#718077]">{message}</p>}{liveViewUrl && <div className="border-t border-[#e5e8e2]"><iframe title="DeepScapes remote browser" src={liveViewUrl} className="h-[42rem] w-full border-0 bg-white" allow="clipboard-read; clipboard-write" /></div>}</section>;
+  return <section className="overflow-hidden rounded-2xl border border-[#e5e8e2] bg-white"><div className="flex flex-wrap items-center justify-between gap-3 p-4"><p className="font-semibold">Browse</p><div className="flex w-full max-w-2xl gap-2 sm:w-auto"><input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && !opening && !ending && void open()} placeholder="Search the web or enter a website" className="min-w-0 flex-1 rounded-lg border border-[#dce1d9] bg-white px-3 py-2 text-sm outline-none sm:w-72" /><button onClick={() => void open()} disabled={opening || ending} className="shrink-0 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{opening ? "Starting…" : liveViewUrl ? "New session" : "Open"}</button>{liveViewUrl && <><button onClick={() => void releaseActive()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{ending ? "Saving…" : "Save & end"}</button><a href={liveViewUrl} target="_blank" rel="noreferrer" className="shrink-0 rounded-lg border px-3 py-2 text-sm">Full screen ↗</a></>}</div></div>{message && <p role="status" aria-live="polite" className="border-t border-[#e5e8e2] px-4 py-3 text-sm text-[#718077]">{message}</p>}{liveViewUrl && <div className="border-t border-[#e5e8e2]"><iframe title="DeepScapes remote browser" src={liveViewUrl} loading="eager" className="h-[42rem] w-full cursor-default border-0 bg-white" allow="clipboard-read; clipboard-write" /></div>}</section>;
 }
 
 function ResourceSection({ section, resources, scape, canEdit, onAdd, onToggle, onStar, onDelete, onMaximize }: { section: { label: string; type: ResourceType | "starred"; icon: string }; resources: Resource[]; scape: Scape; canEdit: boolean; onAdd: () => void; onToggle: (resource: Resource) => void; onStar: (resource: Resource) => void; onDelete: (resource: Resource) => void; onMaximize: () => void }) {

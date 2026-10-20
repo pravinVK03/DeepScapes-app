@@ -5,7 +5,7 @@ export type BrowserActivity = { id: string; type: string; time: string; url?: st
 export type BrowserState = { profileId?: string; activeSessionId?: string; liveViewUrl?: string; lastTarget?: string; lastUrl?: string; updatedAt?: string; activity?: BrowserActivity[] };
 export type CollaborationPermission = "view" | "edit";
 export type Collaborator = { id: string; name: string; email: string; permission: CollaborationPermission; pending?: boolean };
-export type Scape = { id: string; title: string; description: string; template: string; cover: string; updated: string; createdAt?: string; resources: Resource[]; activity: Activity[]; ownerId?: string; collaborators?: Collaborator[]; browser?: BrowserState; browserContexts?: Record<string, string> };
+export type Scape = { id: string; title: string; description: string; template: string; cover: string; updated: string; createdAt?: string; updatedAt?: string; resources: Resource[]; activity: Activity[]; ownerId?: string; collaborators?: Collaborator[]; browser?: BrowserState; browserContexts?: Record<string, string> };
 export type Template = { name: string; icon: string; color: string; description: string; sections: string[] };
 export const templates = [
   { name: "Blank Scape", icon: "＋", color: "#eceee9", description: "A clear, open space for whatever comes next.", sections: [] },

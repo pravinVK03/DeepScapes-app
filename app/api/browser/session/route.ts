@@ -27,12 +27,12 @@ function destination(value?: string) {
 async function openRemotePage(connectUrl: string, url: string) {
   const socket = new WebSocket(connectUrl);
   await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("CDP connection timed out")), 7_000);
+    const timeout = setTimeout(() => reject(new Error("CDP connection timed out")), 3_500);
     socket.addEventListener("open", () => { clearTimeout(timeout); resolve(); }, { once: true });
     socket.addEventListener("error", () => { clearTimeout(timeout); reject(new Error("CDP connection failed")); }, { once: true });
   });
   await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("Navigation timed out")), 7_000);
+    const timeout = setTimeout(() => reject(new Error("Navigation timed out")), 3_500);
     socket.addEventListener("message", (event) => {
       const message = JSON.parse(String(event.data)) as { id?: number; error?: unknown };
       if (message.id !== 1) return;
@@ -99,7 +99,10 @@ export async function POST(request: Request) {
   const dailyQuota = rateLimit(request, "steel-session-daily", 20, 24 * 60 * 60 * 1000, loaded.user!.id);
   if (!dailyQuota.allowed) return rateLimited(dailyQuota.retryAfter);
 
-  const sessionRequest = scape.browser?.profileId ? { profileId: scape.browser.profileId, persistProfile: true } : { persistProfile: true };
+  const viewerConfig = { debugConfig: { interactive: true, systemCursor: false }, inactivityTimeout: 120_000 };
+  const sessionRequest = scape.browser?.profileId
+    ? { ...viewerConfig, profileId: scape.browser.profileId, persistProfile: true }
+    : { ...viewerConfig, persistProfile: true };
   let response = await fetch("https://api.steel.dev/v1/sessions", {
     method: "POST",
     headers: steelHeaders(apiKey),
@@ -107,7 +110,7 @@ export async function POST(request: Request) {
     cache: "no-store",
   }).catch(() => undefined);
   // A profile can be unavailable on an entry plan. Browsing must still work.
-  if (response && !response.ok && Object.keys(sessionRequest).length) response = await fetch("https://api.steel.dev/v1/sessions", { method: "POST", headers: steelHeaders(apiKey), body: JSON.stringify({}), cache: "no-store" }).catch(() => undefined);
+  if (response && !response.ok && scape.browser?.profileId) response = await fetch("https://api.steel.dev/v1/sessions", { method: "POST", headers: steelHeaders(apiKey), body: JSON.stringify(viewerConfig), cache: "no-store" }).catch(() => undefined);
   let session: SteelSession | undefined;
   try { session = response ? await response.json() as SteelSession : undefined; } catch { session = undefined; }
   if (!response?.ok || !session) {
@@ -124,7 +127,7 @@ export async function POST(request: Request) {
   const start = destination(target);
   if (session.id) {
     try {
-      await openRemotePage(steelConnectUrl(session.id, apiKey), start.url);
+      await openRemotePage(session.websocketUrl || steelConnectUrl(session.id, apiKey), start.url);
     } catch {
       // The embedded Steel controls remain available if the initial navigation is delayed.
     }
@@ -158,7 +161,7 @@ export async function DELETE(request: Request) {
   const quota = rateLimit(request, "steel-close", 12, 60 * 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
-  const response = await fetch(`https://api.steel.dev/v1/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE", headers: { "steel-api-key": apiKey } }).catch(() => undefined);
-  if (!response?.ok) return Response.json({ error: "Could not close the browser session." }, { status: 502 });
+  const response = await fetch(`https://api.steel.dev/v1/sessions/${encodeURIComponent(sessionId)}/release`, { method: "POST", headers: steelHeaders(apiKey), body: JSON.stringify({}), cache: "no-store" }).catch(() => undefined);
+  if (!response?.ok && response?.status !== 404 && response?.status !== 409) return Response.json({ error: "Could not close the browser session." }, { status: 502 });
   return Response.json({ closed: true });
 }

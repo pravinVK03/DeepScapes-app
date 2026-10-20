@@ -24,12 +24,15 @@ export function saveScapes(scapes: Scape[]) {
 }
 export function getScape(id: string) { return getScapes().find((scape) => scape.id === id); }
 export function saveScape(next: Scape) {
-  saveScapes(getScapes().map((scape) => scape.id === next.id ? next : scape));
-  return persistScape(next);
+  const stamped = { ...next, updatedAt: new Date().toISOString() };
+  saveScapes(getScapes().map((scape) => scape.id === stamped.id ? stamped : scape));
+  return persistScape(stamped);
 }
 export function addScape(next: Scape) {
-  saveScapes([next, ...getScapes()]);
-  return persistScape(next);
+  const now = new Date().toISOString();
+  const stamped = { ...next, createdAt: next.createdAt ?? now, updatedAt: next.updatedAt ?? now };
+  saveScapes([stamped, ...getScapes()]);
+  return persistScape(stamped);
 }
 export function newId(prefix: string) { return `${prefix}-${globalThis.crypto.randomUUID()}`; }
 export async function persistScape(scape: Scape) {
