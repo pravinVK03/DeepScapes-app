@@ -10,12 +10,18 @@ export type FeedbackEmail = {
 };
 
 const recipient = process.env.FEEDBACK_TO_EMAIL?.trim() || "padmanathan.kdev@gmail.com";
+// This must stay a Resend-verified address. Submitter addresses are Reply-To values,
+// so feedback can come from any domain without impersonating that domain as a sender.
 const sender = process.env.FEEDBACK_FROM_EMAIL?.trim() || "DeepScapes Feedback <onboarding@resend.dev>";
 
 export type FeedbackDeliveryReason = "not_configured" | "invalid_api_key" | "sender_not_verified" | "recipient_restricted" | "rate_limited" | "provider_error";
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]!);
+}
+
+function replyTo(value?: string) {
+  return value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? value : undefined;
 }
 
 export async function sendFeedbackCopy(feedback: FeedbackEmail, origin: string) {
@@ -32,7 +38,7 @@ export async function sendFeedbackCopy(feedback: FeedbackEmail, origin: string) 
   const send = () => fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "Idempotency-Key": `feedback/${feedback.id}` },
-      body: JSON.stringify({ from: sender, to: [recipient], reply_to: feedback.email, subject: `[DeepScapes] ${category} feedback · ${rating}`, text, html, tags: [{ name: "category", value: feedback.category }] }),
+      body: JSON.stringify({ from: sender, to: [recipient], ...(replyTo(feedback.email) ? { reply_to: replyTo(feedback.email) } : {}), subject: `[DeepScapes] ${category} feedback · ${rating}`, text, html, tags: [{ name: "category", value: feedback.category }] }),
       signal: AbortSignal.timeout(8_000),
     });
 

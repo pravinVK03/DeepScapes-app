@@ -8,6 +8,12 @@ const bucket = "deepscapes-feedback";
 const categories = new Set(["idea", "issue", "experience", "other"]);
 let bucketReady: Promise<string | undefined> | undefined;
 
+function validEmail(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  const email = value.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 320 ? email : undefined;
+}
+
 async function ensureBucket() {
   bucketReady ??= (async () => {
     const supabase = getSupabase();
@@ -24,17 +30,15 @@ async function ensureBucket() {
 
 export async function POST(request: Request) {
   if (!databaseEnabled) return Response.json({ error: "Feedback storage is unavailable." }, { status: 503 });
+  const body = await request.json() as { category?: string; message?: string; rating?: number; page?: string; email?: string };
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (!token) return Response.json({ error: "Sign in to send feedback." }, { status: 401 });
   const supabase = getSupabase();
-  const { data } = await supabase.auth.getUser(token);
+  const { data } = token ? await supabase.auth.getUser(token) : { data: { user: null } };
   const user = data.user;
-  if (!user) return Response.json({ error: "Your session has expired." }, { status: 401 });
 
-  const quota = rateLimit(request, "feedback", 5, 24 * 60 * 60 * 1000, user.id);
+  const quota = rateLimit(request, "feedback", 5, 24 * 60 * 60 * 1000, user?.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
 
-  const body = await request.json() as { category?: string; message?: string; rating?: number; page?: string };
   const message = body.message?.trim() || "";
   const category = categories.has(body.category || "") ? body.category! : "other";
   const rating = Number.isInteger(body.rating) && Number(body.rating) >= 1 && Number(body.rating) <= 5 ? Number(body.rating) : undefined;
@@ -43,10 +47,10 @@ export async function POST(request: Request) {
   const bucketError = await ensureBucket();
   if (bucketError) return Response.json({ error: "Feedback storage could not be prepared." }, { status: 500 });
   const createdAt = new Date().toISOString();
-  const feedback: FeedbackEmail = { id: crypto.randomUUID(), userId: user.id, email: user.email, category, rating, message, page: body.page?.slice(0, 300), createdAt };
+  const feedback: FeedbackEmail = { id: crypto.randomUUID(), userId: user?.id || "anonymous", email: validEmail(body.email) || user?.email, category, rating, message, page: body.page?.slice(0, 300), createdAt };
   const payload = JSON.stringify(feedback, null, 2);
   const date = createdAt.slice(0, 10);
-  const path = `${date}/${user.id}/${feedback.id}.json`;
+  const path = `${date}/${user?.id || "anonymous"}/${feedback.id}.json`;
   const bytes = new TextEncoder().encode(payload);
   const { error } = await supabase.storage.from(bucket).upload(path, bytes.buffer, { contentType: "application/json; charset=utf-8", upsert: false });
   if (error) {
