@@ -1,5 +1,5 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
-import type { FeedbackEmail } from "@/lib/feedback-email";
+import { sendFeedbackCopy, type FeedbackEmail } from "@/lib/feedback-email";
 import { rateLimit, rateLimited } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -51,5 +51,6 @@ export async function POST(request: Request) {
     console.error("Feedback upload failed", { code: error.name, statusCode: error.statusCode });
     return Response.json({ error: "Feedback could not be saved. Please try again.", supportEmail: "padmanathan.kdev@gmail.com" }, { status: 500 });
   }
-  return Response.json({ saved: true }, { status: 201 });
+  const delivery = await sendFeedbackCopy(feedback, new URL(request.url).origin);
+  return Response.json({ saved: true, emailed: delivery.sent, delivery: delivery.sent ? undefined : delivery.reason }, { status: 201 });
 }

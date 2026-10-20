@@ -57,9 +57,10 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 STEEL_API_KEY=your-steel-api-key
-RESEND_API_KEY=your-resend-api-key
-FEEDBACK_FROM_EMAIL=DeepScapes Feedback <feedback@your-verified-domain.com>
 FEEDBACK_TO_EMAIL=padmanathan.kdev@gmail.com
+GMAIL_CLIENT_ID=your-google-oauth-client-id
+GMAIL_CLIENT_SECRET=your-google-oauth-client-secret
+GMAIL_TOKEN_ENCRYPTION_KEY=a-random-secret-with-at-least-32-characters
 ```
 
 | Variable | Scope | Purpose |
@@ -70,9 +71,10 @@ FEEDBACK_TO_EMAIL=padmanathan.kdev@gmail.com
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only | Database and storage access through the backend. Never expose this value publicly. |
 | `STEEL_API_KEY` | Server only | Creates, resumes, traces, and closes remote browser sessions. |
 | `STEEL_SESSION_TIMEOUT_MS` | Server only | Requested Steel hard session lifetime. Defaults to 15 minutes; Steel caps it to the account plan. |
-| `RESEND_API_KEY` | Server only | Sends an email copy of each saved feedback submission through Resend. |
-| `FEEDBACK_FROM_EMAIL` | Server only | Verified sender used for feedback notifications. Defaults to Resend's onboarding sender for testing. |
-| `FEEDBACK_TO_EMAIL` | Server only | Feedback notification recipient. Defaults to `padmanathan.kdev@gmail.com`. |
+| `FEEDBACK_TO_EMAIL` | Server only | Gmail address that receives each feedback submission. Defaults to `padmanathan.kdev@gmail.com`. |
+| `GMAIL_CLIENT_ID` | Server only | Google OAuth web-client ID for the owner-controlled Gmail inbox. |
+| `GMAIL_CLIENT_SECRET` | Server only | Google OAuth web-client secret. Never expose it to the browser. |
+| `GMAIL_TOKEN_ENCRYPTION_KEY` | Server only | Random secret (32+ characters) used to encrypt the Gmail refresh token before it is stored privately in Supabase. |
 
 Restart the development server after changing environment variables.
 
@@ -93,9 +95,17 @@ https://deepscapes.vercel.app/login
 
 The application creates its private `deepscapes-resources` storage bucket when the first authenticated upload is prepared. Files upload directly from the browser with a short-lived signed upload token; the server never exposes the service-role key.
 
-Feedback is first saved as JSON in the private `deepscapes-feedback` bucket and then emailed through Resend. Email uses the feedback ID as an idempotency key to avoid duplicate copies. A mail-provider failure does not discard the stored submission.
+Feedback is first saved as JSON in the private `deepscapes-feedback` bucket and then copied to the configured Gmail inbox. A mail-provider failure never discards the stored submission.
 
-For production mail, add `RESEND_API_KEY` to the Vercel **Production** environment and redeploy so the function receives it. Set `FEEDBACK_FROM_EMAIL` to an address on a domain verified in Resend; `onboarding@resend.dev` is intended for initial testing and may restrict recipients.
+### Gmail feedback inbox (no custom domain required)
+
+Use a personal Gmail account—`padmanathan.kdev@gmail.com` is the default recipient—and do not use Resend. In Google Cloud Console, create a project, enable the Gmail API, configure the OAuth consent screen, and create a **Web application** OAuth client. Add this exact authorized redirect URI:
+
+```text
+https://deepscapes.vercel.app/api/feedback/gmail/callback
+```
+
+Add the three Gmail variables above to Vercel **Production**, redeploy, then sign in to that recipient Gmail account. Open the profile menu and select **Connect feedback inbox** to approve the `gmail.send` permission (plus basic identity verification that ensures only the configured inbox can be connected). The encrypted refresh token is held in the private `deepscapes-private-config` bucket, and every saved feedback item is then delivered to that same Gmail inbox. If the OAuth consent screen remains in Testing, add this Gmail account as a test user.
 
 ## Authentication and permissions
 

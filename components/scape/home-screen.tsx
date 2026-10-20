@@ -46,10 +46,10 @@ function FeedbackForm() {
     setSending(true);
     const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
     const response = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ category, rating: rating || undefined, message, page: window.location.pathname }) }).catch(() => undefined);
-    let data: { error?: string } | undefined;
+    let data: { error?: string; emailed?: boolean; delivery?: string } | undefined;
     try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
     if (!response?.ok) { setStatus(data?.error || "Feedback could not be sent. Please try again."); setSending(false); return; }
-    setMessage(""); setRating(0); setStatus("Thank you — your feedback was saved.");
+    setMessage(""); setRating(0); setStatus(data?.emailed ? "Thank you — your feedback was saved and emailed to DeepScapes." : "Thank you — your feedback was saved.");
     setSending(false);
   }
 
