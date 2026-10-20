@@ -60,9 +60,12 @@ export async function POST(request: Request) {
       return Response.json({ bucket, path, token: data.token, mimeType: body.mimeType || "application/octet-stream" });
     }
     if (body.action === "complete" && body.path?.startsWith(`${access.user.id}/${access.scape.id}/`)) {
-      const { data, error } = await access.supabase.storage.from(bucket).createSignedUrl(body.path, 60 * 60 * 24 * 365);
-      if (error || !data?.signedUrl) return Response.json({ error: error?.message ?? "Could not create a file link" }, { status: 500 });
-      return Response.json({ url: data.signedUrl });
+      const [preview, download] = await Promise.all([
+        access.supabase.storage.from(bucket).createSignedUrl(body.path, 60 * 60 * 24 * 365),
+        access.supabase.storage.from(bucket).createSignedUrl(body.path, 60 * 60 * 24 * 365, { download: body.fileName || true }),
+      ]);
+      if (preview.error || !preview.data?.signedUrl || download.error || !download.data?.signedUrl) return Response.json({ error: preview.error?.message ?? download.error?.message ?? "Could not create a file link" }, { status: 500 });
+      return Response.json({ url: preview.data.signedUrl, downloadUrl: download.data.signedUrl });
     }
     return Response.json({ error: "Invalid upload request" }, { status: 400 });
   }
@@ -80,7 +83,10 @@ export async function POST(request: Request) {
   const path = `${access.user.id}/${access.scape.id}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
   const { error: uploadError } = await access.supabase.storage.from(bucket).upload(path, await file.arrayBuffer(), { contentType: file.type || "application/octet-stream" });
   if (uploadError) return Response.json({ error: uploadError.message }, { status: 500 });
-  const { data: signed, error: signError } = await access.supabase.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 365);
-  if (signError || !signed?.signedUrl) return Response.json({ error: signError?.message ?? "Could not create a file link" }, { status: 500 });
-  return Response.json({ url: signed.signedUrl, path, name: file.name, mimeType: file.type || "application/octet-stream" });
+  const [signed, download] = await Promise.all([
+    access.supabase.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 365),
+    access.supabase.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 365, { download: file.name }),
+  ]);
+  if (signed.error || !signed.data?.signedUrl || download.error || !download.data?.signedUrl) return Response.json({ error: signed.error?.message ?? download.error?.message ?? "Could not create a file link" }, { status: 500 });
+  return Response.json({ url: signed.data.signedUrl, downloadUrl: download.data.signedUrl, path, name: file.name, mimeType: file.type || "application/octet-stream" });
 }

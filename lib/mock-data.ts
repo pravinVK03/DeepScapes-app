@@ -1,5 +1,5 @@
 export type ResourceType = "note" | "task" | "file" | "image" | "video" | "audio" | "link";
-export type Resource = { id: string; title: string; type: ResourceType; detail: string; date: string; done?: boolean; starred?: boolean; content?: string; mimeType?: string };
+export type Resource = { id: string; title: string; type: ResourceType; detail: string; date: string; done?: boolean; starred?: boolean; content?: string; downloadUrl?: string; mimeType?: string };
 export type Activity = { id: string; action: string; detail: string; time: string; actorId?: string; actorName?: string; actorEmail?: string };
 export type BrowserActivity = { id: string; type: string; time: string; url?: string; target?: string; detail?: string; sessionId: string };
 export type BrowserTabSnapshot = {
