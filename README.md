@@ -4,7 +4,11 @@ DeepScapes is an authenticated, project-centric workspace for keeping notes, tas
 
 **Live app:** [deepscapes.vercel.app](https://deepscapes.vercel.app)
 
-## What it includes
+## Why DeepScapes
+
+Projects often scatter across notes, browser tabs, files, and chat threads. A Scape keeps that working context together: collect material, collaborate with the right people, research in an embedded browser, then return exactly where you left off.
+
+### Product highlights
 
 - Private accounts with email/password and Google authentication through Supabase Auth.
 - A personal default Scape for every account, plus template-based and blank Scapes.
@@ -20,6 +24,21 @@ DeepScapes is an authenticated, project-centric workspace for keeping notes, tas
 - Cost guards and rate limiting around Steel, Supabase storage, authentication, and Scape persistence.
 - Vercel Web Analytics for privacy-friendly visitor and page-view reporting.
 - Responsive layouts for desktop and mobile.
+
+## Try it
+
+1. Create an account with email/password or Google.
+2. Start a blank Scape or choose a template.
+3. Add notes, tasks, links, or files; PDFs and presentations can be opened or downloaded.
+4. Invite collaborators as viewers or editors.
+5. Use the embedded browser for research, then save the session to resume its tabs and context later.
+
+## Architecture at a glance
+
+- **App:** Next.js App Router, React, TypeScript, and Tailwind CSS.
+- **Identity and data:** Supabase Auth, PostgreSQL, and private Storage buckets.
+- **Browsing:** Steel Sessions API, with server-side authorization, rate limits, checkpoints, and redacted activity traces.
+- **Operations:** Vercel hosting, Web Analytics, structured feedback storage, and optional Gmail delivery to the project owner.
 
 ## Technology
 
@@ -58,7 +77,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 STEEL_API_KEY=your-steel-api-key
-FEEDBACK_TO_EMAIL=padmanathan.kdev@gmail.com
+FEEDBACK_TO_EMAIL=your-feedback-inbox@gmail.com
 GMAIL_CLIENT_ID=your-google-oauth-client-id
 GMAIL_CLIENT_SECRET=your-google-oauth-client-secret
 GMAIL_TOKEN_ENCRYPTION_KEY=a-random-secret-with-at-least-32-characters
@@ -72,12 +91,12 @@ GMAIL_TOKEN_ENCRYPTION_KEY=a-random-secret-with-at-least-32-characters
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only | Database and storage access through the backend. Never expose this value publicly. |
 | `STEEL_API_KEY` | Server only | Creates, resumes, traces, and closes remote browser sessions. |
 | `STEEL_SESSION_TIMEOUT_MS` | Server only | Requested Steel hard session lifetime. Defaults to 15 minutes; Steel caps it to the account plan. |
-| `FEEDBACK_TO_EMAIL` | Server only | Gmail address that receives each feedback submission. Defaults to `padmanathan.kdev@gmail.com`. |
+| `FEEDBACK_TO_EMAIL` | Server only | Gmail address that receives each feedback submission. Set this explicitly in every deployed environment. |
 | `GMAIL_CLIENT_ID` | Server only | Google OAuth web-client ID for the owner-controlled Gmail inbox. |
 | `GMAIL_CLIENT_SECRET` | Server only | Google OAuth web-client secret. Never expose it to the browser. |
 | `GMAIL_TOKEN_ENCRYPTION_KEY` | Server only | Random secret (32+ characters) used to encrypt the Gmail refresh token before it is stored privately in Supabase. |
 
-Restart the development server after changing environment variables.
+Restart the development server after changing environment variables. Keep all server-only values out of Git and never use `NEXT_PUBLIC_` for secrets.
 
 ## Supabase setup
 
@@ -100,13 +119,13 @@ Feedback is first saved as JSON in the private `deepscapes-feedback` bucket and 
 
 ### Gmail feedback inbox (no custom domain required)
 
-Use a personal Gmail account—`padmanathan.kdev@gmail.com` is the default recipient—and do not use Resend. In Google Cloud Console, create a project, enable the Gmail API, configure the OAuth consent screen, and create a **Web application** OAuth client. Add this exact authorized redirect URI:
+Use a personal or organization Gmail account and do not use Resend. In Google Cloud Console, create a project, enable the Gmail API, configure the OAuth consent screen, and create a **Web application** OAuth client. Add this exact authorized redirect URI:
 
 ```text
 https://deepscapes.vercel.app/api/feedback/gmail/callback
 ```
 
-Add the three Gmail variables above to Vercel **Production**, redeploy, then sign in to that recipient Gmail account. Open the profile menu and select **Connect feedback inbox** to approve the `gmail.send` permission (plus basic identity verification that ensures only the configured inbox can be connected). The encrypted refresh token is held in the private `deepscapes-private-config` bucket, and every saved feedback item is then delivered to that same Gmail inbox. If the OAuth consent screen remains in Testing, add this Gmail account as a test user.
+Add the three Gmail variables plus `FEEDBACK_TO_EMAIL` to Vercel **Production**, redeploy, then sign in to that recipient Gmail account. Open the profile menu and select **Connect feedback inbox** to approve the `gmail.send` permission (plus basic identity verification that ensures only the configured inbox can be connected). The encrypted refresh token is held in the private `deepscapes-private-config` bucket, and every saved feedback item is then delivered to that same Gmail inbox. If the OAuth consent screen remains in Testing, add this Gmail account as a test user.
 
 ## Authentication and permissions
 
@@ -118,7 +137,7 @@ Scape access is enforced by server Route Handlers:
 - **Editor:** can modify Scape content but cannot change ownership or collaborators.
 - **Viewer:** read-only access.
 
-Audit actors are assigned from the authenticated server session, preventing clients from impersonating another collaborator in the activity history.
+Audit actors are assigned from the authenticated server session, preventing clients from impersonating another collaborator in the activity history. Viewer accounts cannot change content, collaboration settings, or start and manage remote browser sessions.
 
 ## Remote browsing
 
@@ -152,7 +171,7 @@ Exceeded limits return HTTP `429` with a `Retry-After` header.
 
 The current limiter is an in-memory, per-server-instance safeguard with no additional infrastructure cost. For strict limits shared across every Vercel instance, replace the store in [`lib/rate-limit.ts`](./lib/rate-limit.ts) with a durable Redis/KV-backed limiter.
 
-## Available scripts
+## Quality checks
 
 ```bash
 npm run dev       # Start the local development server
@@ -167,12 +186,20 @@ Type-check without producing build output:
 npx tsc --noEmit
 ```
 
+Before a release, run the type check, `npm run lint`, `npm run build`, and `npm audit --omit=dev`. The build is the final compatibility check for the Next.js production runtime.
+
 ## Deployment
 
-The production project is deployed on Vercel. Configure all five environment variables for the **Production** environment, then deploy from `main` or run:
+The production project is deployed on Vercel. Configure the environment variables required by the capabilities you enable (Supabase is required; Steel and Gmail are optional), then deploy from `main` or run:
 
 ```bash
 npx vercel --prod
 ```
 
-Keep `.env.local`, Supabase service-role credentials, and Steel API keys out of Git.
+Keep `.env.local`, Supabase service-role credentials, Steel API keys, Gmail OAuth secrets, and encryption keys out of Git.
+
+## Operational notes
+
+- The in-memory rate limiter is a cost guard, not a distributed limiter. Use Redis or Vercel KV before operating at multi-instance scale.
+- Signed resource URLs are currently issued for long-lived access. Rotate or shorten them before introducing stricter revocation requirements.
+- Web Analytics is enabled globally through `@vercel/analytics`; use the Vercel Analytics dashboard to monitor visitor and page-view trends.

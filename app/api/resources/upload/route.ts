@@ -46,7 +46,8 @@ async function ensureBucket() {
 export async function POST(request: Request) {
   const isJson = request.headers.get("content-type")?.includes("application/json");
   if (isJson) {
-    const body = await request.json() as { action?: "prepare" | "complete"; scapeId?: string; fileName?: string; mimeType?: string; path?: string };
+    const body = await request.json().catch(() => undefined) as { action?: "prepare" | "complete"; scapeId?: string; fileName?: string; mimeType?: string; path?: string } | undefined;
+    if (!body) return Response.json({ error: "Invalid upload request" }, { status: 400 });
     const access = await getEditableScape(request, body.scapeId ?? "");
     if ("error" in access) return Response.json({ error: access.error }, { status: access.status });
     const quota = rateLimit(request, body.action === "prepare" ? "upload-prepare" : "upload-complete", body.action === "prepare" ? 20 : 40, 60 * 60 * 1000, access.user.id);

@@ -12,9 +12,9 @@ async function currentUser(request: Request) {
   return data.user;
 }
 
-function canAccess(scape: Scape, userId: string, email?: string) {
+function canAccess(scape: Scape, userId: string, email?: string, needsEdit = false) {
   if (scape.ownerId === userId) return true;
-  return scape.collaborators?.some((person) => person.id === userId || person.email === email) ?? false;
+  return scape.collaborators?.some((person) => (person.id === userId || person.email === email) && (!needsEdit || person.permission === "edit")) ?? false;
 }
 
 function destination(value?: string) {
@@ -152,15 +152,30 @@ function safeTraceText(value: unknown) {
   return undefined;
 }
 
+function safeTraceUrl(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  try {
+    const url = new URL(value);
+    url.username = "";
+    url.password = "";
+    for (const key of [...url.searchParams.keys()]) {
+      if (/pass|secret|token|key|code|otp|session/i.test(key)) url.searchParams.set(key, "[redacted]");
+    }
+    return url.toString().slice(0, 2048);
+  } catch {
+    return undefined;
+  }
+}
+
 function cleanTrace(event: unknown, sessionId: string, index: number): BrowserActivity {
   const source = event as { id?: string; type?: string; timestamp?: string; page?: { url?: string }; target?: unknown; value?: unknown; input?: unknown };
   const type = String(source.type || "browser activity").slice(0, 80);
   // Never retain typed values: traces can include credentials and form entries.
   const target = type === "input" ? "Form field" : safeTraceText(source.target)?.slice(0, 180);
-  return { id: String(source.id || `${sessionId}-${source.timestamp || Date.now()}-${index}`), type, time: source.timestamp || new Date().toISOString(), url: source.page?.url?.slice(0, 2048), target, detail: type === "input" ? "Text entered (redacted)" : target, sessionId };
+  return { id: String(source.id || `${sessionId}-${source.timestamp || Date.now()}-${index}`), type, time: source.timestamp || new Date().toISOString(), url: safeTraceUrl(source.page?.url), target, detail: type === "input" ? "Text entered (redacted)" : target, sessionId };
 }
 
-async function loadScape(request: Request, scapeId?: string) {
+async function loadScape(request: Request, scapeId?: string, needsEdit = false) {
   const user = await currentUser(request);
   if (!user) return { error: Response.json({ error: "Sign in required" }, { status: 401 }) };
   if (!scapeId) return { error: Response.json({ error: "Scape is required" }, { status: 400 }) };
@@ -168,8 +183,12 @@ async function loadScape(request: Request, scapeId?: string) {
   const { data: row, error: readError } = await supabase.from("scapes").select("payload").eq("id", scapeId).maybeSingle();
   const scape = row?.payload as Scape | undefined;
   if (readError || !scape) return { error: Response.json({ error: "Scape not found" }, { status: 404 }) };
-  if (!canAccess(scape, user.id, user.email)) return { error: Response.json({ error: "You do not have access to this Scape" }, { status: 403 }) };
+  if (!canAccess(scape, user.id, user.email, needsEdit)) return { error: Response.json({ error: needsEdit ? "Editor access is required" : "You do not have access to this Scape" }, { status: 403 }) };
   return { scape, user };
+}
+
+async function requestBody<T>(request: Request): Promise<T | undefined> {
+  try { return await request.json() as T; } catch { return undefined; }
 }
 
 export async function POST(request: Request) {
@@ -179,8 +198,10 @@ export async function POST(request: Request) {
     return Response.json({ error: "Remote browsing is not configured" }, { status: 503 });
   }
 
-  const { scapeId, target, sessionName, snapshot, sourceSessionId } = await request.json() as { scapeId?: string; target?: string; sessionName?: string; snapshot?: BrowserSessionSnapshot; sourceSessionId?: string };
-  const loaded = await loadScape(request, scapeId);
+  const body = await requestBody<{ scapeId?: string; target?: string; sessionName?: string; snapshot?: BrowserSessionSnapshot; sourceSessionId?: string }>(request);
+  if (!body) return Response.json({ error: "Invalid browser request" }, { status: 400 });
+  const { scapeId, target, sessionName, snapshot, sourceSessionId } = body;
+  const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
   const scape = loaded.scape!;
   const quota = rateLimit(request, "steel-session", 6, 60 * 60 * 1000, loaded.user!.id);
@@ -261,8 +282,10 @@ export async function PATCH(request: Request) {
   if (!databaseEnabled) return Response.json({ error: "Database is not configured" }, { status: 503 });
   const apiKey = process.env.STEEL_API_KEY;
   if (!apiKey) return Response.json({ error: "Remote browsing is not configured" }, { status: 503 });
-  const { scapeId, sessionId, target, action, sessionName, activeUrl } = await request.json() as { scapeId?: string; sessionId?: string; target?: string; action?: "navigate" | "checkpoint"; sessionName?: string; activeUrl?: string };
-  const loaded = await loadScape(request, scapeId);
+  const body = await requestBody<{ scapeId?: string; sessionId?: string; target?: string; action?: "navigate" | "checkpoint"; sessionName?: string; activeUrl?: string }>(request);
+  if (!body) return Response.json({ error: "Invalid browser request" }, { status: 400 });
+  const { scapeId, sessionId, target, action, sessionName, activeUrl } = body;
+  const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
   const quota = rateLimit(request, "steel-navigation", 40, 60 * 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
@@ -288,8 +311,10 @@ export async function DELETE(request: Request) {
   if (!databaseEnabled) return Response.json({ error: "Database is not configured" }, { status: 503 });
   const apiKey = process.env.STEEL_API_KEY;
   if (!apiKey) return Response.json({ error: "Remote browsing is not configured" }, { status: 503 });
-  const { scapeId, sessionId, sessionName, activeUrl } = await request.json() as { scapeId?: string; sessionId?: string; sessionName?: string; activeUrl?: string };
-  const loaded = await loadScape(request, scapeId);
+  const body = await requestBody<{ scapeId?: string; sessionId?: string; sessionName?: string; activeUrl?: string }>(request);
+  if (!body) return Response.json({ error: "Invalid browser request" }, { status: 400 });
+  const { scapeId, sessionId, sessionName, activeUrl } = body;
+  const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
   const quota = rateLimit(request, "steel-close", 12, 60 * 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);

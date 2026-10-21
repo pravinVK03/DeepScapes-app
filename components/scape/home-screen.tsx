@@ -69,7 +69,14 @@ function FeedbackForm() {
 
 export default function HomeScreen() {
   const scapes = useScapes(); const { user } = useAuth(); const [query, setQuery] = useState("");
-  useEffect(() => { if (user) void loadRemoteScapes().then(saveScapes); }, [user]);
+  useEffect(() => {
+    if (!user) return;
+    void loadRemoteScapes().then((remoteScapes) => {
+      // Do not replace a user's local view with an empty list after an
+      // intermittent network or server failure.
+      if (remoteScapes) saveScapes(remoteScapes);
+    });
+  }, [user]);
   const { personalScape, recentScapes } = useMemo(() => {
     const personal = scapes.find((scape) => scape.id === `scape-${user?.id}`);
     const recent = scapes.filter((scape) => scape.id !== personal?.id);

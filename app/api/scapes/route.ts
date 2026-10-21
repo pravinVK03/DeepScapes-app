@@ -40,19 +40,23 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
   const quota = rateLimit(request, "scape-write", 90, 60 * 60 * 1000, user.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
-  const received = await request.json() as Scape;
-  const { data: existing } = await getSupabase().from("scapes").select("payload, created_at").eq("id", received.id).maybeSingle();
+  const received = await request.json().catch(() => undefined) as Partial<Scape> | undefined;
+  if (!received || typeof received.id !== "string" || !received.id.trim() || received.id.length > 200 || typeof received.title !== "string" || !Array.isArray(received.resources) || !Array.isArray(received.activity)) {
+    return Response.json({ error: "A valid Scape payload is required" }, { status: 400 });
+  }
+  const nextScape = received as Scape;
+  const { data: existing } = await getSupabase().from("scapes").select("payload, created_at").eq("id", nextScape.id).maybeSingle();
   const existingScape = existing?.payload as Scape | undefined;
   if (existingScape && !canAccess(existingScape, user.id, user.email, true)) return Response.json({ error: "Editor access is required" }, { status: 403 });
   const actor = { actorId: user.id, actorName: user.user_metadata?.username || user.email?.split("@")[0] || "Collaborator", actorEmail: user.email };
   const knownIds = new Set(existingScape?.activity.map((item) => item.id) || []);
-  const newActivity = (received.activity || []).filter((item) => !knownIds.has(item.id)).map((item) => ({ ...item, ...actor, time: new Date(item.time).toString() === "Invalid Date" ? new Date().toISOString() : item.time }));
+  const newActivity = nextScape.activity.filter((item) => !knownIds.has(item.id)).map((item) => ({ ...item, ...actor, time: new Date(item.time).toString() === "Invalid Date" ? new Date().toISOString() : item.time }));
   const retainedActivity = existingScape?.activity || [];
   const activity: Activity[] = [...newActivity, ...retainedActivity].slice(0, 1000);
   const now = new Date().toISOString();
   const scape: Scape = existingScape
-    ? { ...received, ownerId: existingScape.ownerId, createdAt: existingScape.createdAt ?? existing?.created_at, updatedAt: now, collaborators: existingScape.ownerId === user.id ? received.collaborators : existingScape.collaborators, activity }
-    : { ...received, activity: (received.activity || []).map((item) => ({ ...item, ...actor })), createdAt: received.createdAt ?? now, updatedAt: now, ownerId: user.id, collaborators: received.collaborators?.length ? received.collaborators : [{ id: user.id, name: user.email?.split("@")[0] ?? "Owner", email: user.email ?? "", permission: "edit" }] };
+    ? { ...nextScape, ownerId: existingScape.ownerId, createdAt: existingScape.createdAt ?? existing?.created_at, updatedAt: now, collaborators: existingScape.ownerId === user.id ? nextScape.collaborators : existingScape.collaborators, activity }
+    : { ...nextScape, activity: nextScape.activity.map((item) => ({ ...item, ...actor })), createdAt: nextScape.createdAt ?? now, updatedAt: now, ownerId: user.id, collaborators: nextScape.collaborators?.length ? nextScape.collaborators : [{ id: user.id, name: user.email?.split("@")[0] ?? "Owner", email: user.email ?? "", permission: "edit" }] };
   const { error } = await getSupabase().from("scapes").upsert(
     { id: scape.id, payload: scape, updated_at: now },
     { onConflict: "id" },

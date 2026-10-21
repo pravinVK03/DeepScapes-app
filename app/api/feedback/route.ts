@@ -24,7 +24,8 @@ async function ensureBucket() {
 
 export async function POST(request: Request) {
   if (!databaseEnabled) return Response.json({ error: "Feedback storage is unavailable." }, { status: 503 });
-  const body = await request.json() as { category?: string; message?: string; rating?: number; page?: string };
+  const body = await request.json().catch(() => undefined) as { category?: string; message?: string; rating?: number; page?: string } | undefined;
+  if (!body) return Response.json({ error: "Invalid feedback request." }, { status: 400 });
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   const supabase = getSupabase();
   const { data } = token ? await supabase.auth.getUser(token) : { data: { user: null } };
