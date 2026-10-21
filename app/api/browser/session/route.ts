@@ -125,6 +125,24 @@ function interactiveViewerUrl(value: string) {
   return url.toString();
 }
 
+async function usableViewerUrl(value: string) {
+  const viewer = interactiveViewerUrl(value);
+  if (!viewer) return undefined;
+  // A sessionViewerUrl may redirect to Steel's account sign-in page. Verify
+  // that an embed is a real live viewer before returning it to the iframe so
+  // the application never displays a provider login or routing error.
+  const response = await fetch(viewer, {
+    headers: { Accept: "text/html,application/xhtml+xml" },
+    cache: "no-store",
+    redirect: "follow",
+    signal: AbortSignal.timeout(6_000),
+  }).catch(() => undefined);
+  if (!response?.ok || !response.headers.get("content-type")?.includes("text/html")) return undefined;
+  const preview = (await response.text().catch(() => "")).slice(0, 32_000);
+  if (/sign in to steel|continue with github|continue with google/i.test(preview)) return undefined;
+  return viewer;
+}
+
 function steelConnectUrl(sessionId: string, apiKey: string) {
   const url = new URL("wss://connect.steel.dev");
   url.searchParams.set("apiKey", apiKey);
@@ -247,11 +265,10 @@ export async function POST(request: Request) {
         : "Steel could not start a remote browser. Please retry shortly.";
     return Response.json({ error: message, providerStatus: status }, { status: 502 });
   }
-  // sessionViewerUrl is the stable embed URL returned by current Steel sessions.
-  // Some accounts still return only debugUrl, so retain it as a compatibility
-  // fallback. Prefer the session-scoped URL: old debug player URLs can resolve
-  // to Steel's 404 page even though the browser itself started successfully.
-  const viewer = interactiveViewerUrl(session.sessionViewerUrl || "") || interactiveViewerUrl(session.debugUrl || "");
+  // Steel's headful live viewer is the public debug URL. sessionViewerUrl is
+  // kept only for accounts that do not return debugUrl, and is verified because
+  // some Steel accounts route it to their own authenticated console.
+  const viewer = await usableViewerUrl(session.debugUrl || "") || await usableViewerUrl(session.sessionViewerUrl || "");
   if (!viewer) {
     if (session.id) void fetch(`https://api.steel.dev/v1/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE", headers: { "steel-api-key": apiKey } }).catch(() => undefined);
     return Response.json({ error: "Steel started a browser but did not provide a usable viewer. Please retry." }, { status: 502 });
