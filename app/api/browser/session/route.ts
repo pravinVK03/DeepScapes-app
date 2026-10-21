@@ -211,7 +211,9 @@ export async function POST(request: Request) {
   // No inactivityTimeout: remote input may legitimately pause while the user reads.
   // Steel still enforces the plan's hard session lifetime.
   const requestedTimeout = Math.max(300_000, Math.min(86_400_000, Number(process.env.STEEL_SESSION_TIMEOUT_MS) || 900_000));
-  const viewerConfig = { debugConfig: { interactive: true, systemCursor: true }, timeout: requestedTimeout };
+  // The iframe already renders the local pointer. Do not stream Steel's OS
+  // cursor into the video as well, otherwise users see two cursors.
+  const viewerConfig = { debugConfig: { interactive: true, systemCursor: false }, timeout: requestedTimeout };
   const sessionRequest = scape.browser?.profileId
     ? { ...viewerConfig, profileId: scape.browser.profileId, persistProfile: true }
     : { ...viewerConfig, persistProfile: true };
