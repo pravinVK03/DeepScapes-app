@@ -64,19 +64,19 @@ async function openRemotePages(connectUrl: string, tabs: BrowserTabSnapshot[]) {
   await withCdp(connectUrl, async (send) => {
     const before = await send<{ targetInfos?: { targetId: string; type: string; url: string }[] }>("Target.getTargets");
     const emptyTargets = (before.targetInfos || []).filter((item) => item.type === "page" && (item.url === "about:blank" || !item.url));
-    for (const tab of pages) {
-      const created = await send<{ targetId?: string }>("Target.createTarget", { url: tab.url });
-      if (!created.targetId || (!tab.active && !tab.scrollX && !tab.scrollY && !tab.fields?.length)) continue;
-      const attached = await send<{ sessionId?: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
-      if (!attached.sessionId) continue;
+    const created = await Promise.all(pages.map(async (tab) => ({ tab, target: await send<{ targetId?: string }>("Target.createTarget", { url: tab.url }) })));
+    await Promise.all(created.map(async ({ tab, target }) => {
+      if (!target.targetId || (!tab.active && !tab.scrollX && !tab.scrollY && !tab.fields?.length)) return;
+      const attached = await send<{ sessionId?: string }>("Target.attachToTarget", { targetId: target.targetId, flatten: true });
+      if (!attached.sessionId) return;
       if (tab.scrollX || tab.scrollY || tab.fields?.length) {
-        await new Promise((resolve) => setTimeout(resolve, 900));
+        await new Promise((resolve) => setTimeout(resolve, 350));
         const state = JSON.stringify({ scrollX: tab.scrollX || 0, scrollY: tab.scrollY || 0, fields: tab.fields || [] });
         const expression = `(() => { const state = ${state}; scrollTo(state.scrollX, state.scrollY); for (const field of state.fields) { const node = document.querySelector(field.selector); if (!node) continue; if (typeof field.checked === 'boolean') node.checked = field.checked; if (typeof field.selectedIndex === 'number') node.selectedIndex = field.selectedIndex; if (typeof field.value === 'string') node.value = field.value; node.dispatchEvent(new Event('input', { bubbles: true })); node.dispatchEvent(new Event('change', { bubbles: true })); } })()`;
         await send("Runtime.evaluate", { expression }, attached.sessionId).catch(() => undefined);
       }
       if (tab.active) await send("Page.bringToFront", {}, attached.sessionId).catch(() => undefined);
-    }
+    }));
     for (const target of emptyTargets) await send("Target.closeTarget", { targetId: target.targetId }).catch(() => undefined);
   });
 }
@@ -118,7 +118,9 @@ async function captureRemoteSession(connectUrl: string, sessionId: string, name:
 }
 
 function interactiveViewerUrl(value: string) {
-  const url = new URL(value);
+  let url: URL;
+  try { url = new URL(value); } catch { return undefined; }
+  if (url.protocol !== "https:") return undefined;
   url.searchParams.set("interactive", "true");
   url.searchParams.set("showControls", "true");
   return url.toString();
@@ -136,7 +138,7 @@ type SteelSession = { id?: string; debugUrl?: string; sessionViewerUrl?: string;
 function steelHeaders(apiKey: string) { return { "Content-Type": "application/json", "steel-api-key": apiKey }; }
 
 async function createSteelSession(apiKey: string, body: Record<string, unknown>) {
-  return fetch("https://api.steel.dev/v1/sessions", { method: "POST", headers: steelHeaders(apiKey), body: JSON.stringify(body), cache: "no-store" }).catch(() => undefined);
+  return fetch("https://api.steel.dev/v1/sessions", { method: "POST", headers: steelHeaders(apiKey), body: JSON.stringify(body), cache: "no-store", signal: AbortSignal.timeout(15_000) }).catch(() => undefined);
 }
 
 function safeTraceText(value: unknown) {
@@ -189,7 +191,7 @@ export async function POST(request: Request) {
   // No inactivityTimeout: remote input may legitimately pause while the user reads.
   // Steel still enforces the plan's hard session lifetime.
   const requestedTimeout = Math.max(300_000, Math.min(86_400_000, Number(process.env.STEEL_SESSION_TIMEOUT_MS) || 900_000));
-  const viewerConfig = { debugConfig: { interactive: true, systemCursor: false }, timeout: requestedTimeout };
+  const viewerConfig = { debugConfig: { interactive: true }, timeout: requestedTimeout };
   const sessionRequest = scape.browser?.profileId
     ? { ...viewerConfig, profileId: scape.browser.profileId, persistProfile: true }
     : { ...viewerConfig, persistProfile: true };
@@ -223,7 +225,9 @@ export async function POST(request: Request) {
         : "Steel could not start a remote browser. Please retry shortly.";
     return Response.json({ error: message, providerStatus: status }, { status: 502 });
   }
-  const viewer = session.debugUrl ?? session.sessionViewerUrl;
+  // Steel documents debugUrl as the embeddable, interactive live view. Keep the
+  // legacy viewer URL as a compatibility fallback for older accounts.
+  const viewer = interactiveViewerUrl(session.debugUrl || "") || interactiveViewerUrl(session.sessionViewerUrl || "");
   if (!viewer) return Response.json({ error: "Steel did not provide a browser viewer." }, { status: 502 });
   const start = destination(target);
   if (session.id) {
@@ -234,7 +238,7 @@ export async function POST(request: Request) {
       // The embedded Steel controls remain available if the initial navigation is delayed.
     }
   }
-  return Response.json({ sessionId: session.id, profileId: session.profileId || scape.browser?.profileId, liveViewUrl: interactiveViewerUrl(viewer), expiresAt: session.expiresAt, destination: start, sessionName: sessionName?.trim() || snapshot?.name || start.label, sourceSessionId });
+  return Response.json({ sessionId: session.id, profileId: session.profileId || scape.browser?.profileId, liveViewUrl: viewer, expiresAt: session.expiresAt, destination: start, sessionName: sessionName?.trim() || snapshot?.name || start.label, sourceSessionId });
 }
 
 export async function GET(request: Request) {

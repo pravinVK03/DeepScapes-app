@@ -210,25 +210,29 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 20_000);
     const response = await fetch("/api/browser/session", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId: scape.id, sessionId, target, activeUrl: browserRef.current?.lastUrl }), signal: controller.signal }).catch(() => undefined); window.clearTimeout(timeout);
     let data: { error?: string; destination?: { url: string; label: string } } | undefined; try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
-    if (!response?.ok) { setOpening(false); setMessage(data?.error || "The browser disconnected. Use Reconnect, or save and restore the session."); return; }
+    if (!response?.ok) { setOpening(false); setDisconnected(true); setMessage(data?.error || "The live browser needs repair. Your latest checkpoint is safe."); return; }
     const event: WebLog = { id: `navigate-${sessionId}-${Date.now()}`, type: "navigate", time: new Date().toISOString(), url: data?.destination?.url, target: data?.destination?.label, detail: "Opened in the current browser session", sessionId };
-    persist({ lastTarget: target, lastUrl: data?.destination?.url, activity: [event, ...(browserRef.current?.activity || [])] }); setViewerOpen(true); setViewerKey((value) => value + 1); setOpening(false); setMessage("");
+    // The live viewer receives the CDP navigation directly. Remounting its
+    // WebRTC stream here introduced visible latency and avoidable disconnects.
+    persist({ lastTarget: target, lastUrl: data?.destination?.url, activity: [event, ...(browserRef.current?.activity || [])] }); setViewerOpen(true); setOpening(false); setMessage("");
   }
   async function reconnect() {
-    if (!sessionId) return;
-    if (!disconnected) { setViewerOpen(true); setViewerKey((value) => value + 1); setMessage("Reconnecting to the same live session…"); return; }
+    if (!sessionId) { await startSession(input || browserRef.current?.lastTarget || ""); return; }
+    // Viewer URLs are scoped to a live Steel session. A stale or broken URL
+    // cannot be fixed by reloading the iframe, so rebuild from the latest safe
+    // snapshot and keep the same persisted browser profile.
     const saved = browserRef.current?.sessions?.[sessionId];
-    if (!saved?.tabs.length) { setMessage("No recovery checkpoint is available for this session."); return; }
-    const endedSnapshot = await releaseActive(); if (!endedSnapshot) return;
-    const activeTab = saved.tabs[saved.activeTab ?? 0] || saved.tabs.find((tab) => tab.active);
-    await startSession(activeTab?.url || "", { key: crypto.randomUUID(), mode: "resume", name: saved.name, snapshot: saved });
+    setMessage("Repairing the browser from its latest checkpoint…");
+    const endedSnapshot = await releaseActive();
+    const snapshot = endedSnapshot || saved;
+    if (!snapshot?.tabs.length) { setMessage("No recovery checkpoint is available for this session."); return; }
+    const activeTab = snapshot.tabs[snapshot.activeTab ?? 0] || snapshot.tabs.find((tab) => tab.active);
+    await startSession(activeTab?.url || "", { key: crypto.randomUUID(), mode: "resume", name: snapshot.name, snapshot });
   }
-  function continueSavedSession() {
+  async function continueSavedSession() {
     setInput(browserRef.current?.lastTarget || "");
     setSessionName(browserRef.current?.activeSessionName || "");
-    setViewerOpen(true);
-    setViewerKey((value) => value + 1);
-    setMessage("Connecting to your saved browser session…");
+    await reconnect();
   }
   useEffect(() => { releaseActiveRef.current = releaseActive; startSessionRef.current = startSession; });
   useEffect(() => {
@@ -261,13 +265,13 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
       <div className="mr-auto min-w-[10rem]"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#718077]">Browse</p><input value={sessionName} onChange={(event) => setSessionName(event.target.value)} onBlur={saveSessionName} placeholder="Name this session" className="mt-0.5 w-full bg-transparent text-sm font-semibold outline-none placeholder:text-[#9aa39d]" aria-label="Browser session name" /></div>
       <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && !opening && !ending && void open()} placeholder="Search the web or enter a website" className="min-w-0 flex-1 rounded-lg border border-[#dce1d9] bg-white px-3 py-2 text-sm outline-none sm:max-w-sm" />
       <button onClick={() => void open()} disabled={opening || ending} className="shrink-0 rounded-lg bg-[#315443] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{opening ? "Opening…" : viewerOpen ? "Go" : "Open"}</button>
-      {liveViewUrl && !viewerOpen && <button onClick={continueSavedSession} disabled={ending} className="shrink-0 rounded-lg border border-[#315443] px-3 py-2 text-sm font-medium text-[#315443] disabled:opacity-60">Continue session</button>}
-      {liveViewUrl && viewerOpen && <><button onClick={() => setPaused((value) => !value)} disabled={ending} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{paused ? "Resume view" : "Pause"}</button><button onClick={() => void reconnect()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{disconnected ? "Restore" : "Reconnect"}</button><button onClick={() => setFullScreen((value) => !value)} className="shrink-0 rounded-lg border px-3 py-2 text-sm">{fullScreen ? "Exit full screen" : "Full screen"}</button></>}
+      {liveViewUrl && !viewerOpen && <button onClick={() => void continueSavedSession()} disabled={ending || opening} className="shrink-0 rounded-lg border border-[#315443] px-3 py-2 text-sm font-medium text-[#315443] disabled:opacity-60">Restore session</button>}
+      {liveViewUrl && viewerOpen && <><button onClick={() => setPaused((value) => !value)} disabled={ending} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{paused ? "Resume view" : "Pause"}</button><button onClick={() => void reconnect()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{disconnected ? "Restore session" : "Repair connection"}</button><button onClick={() => setFullScreen((value) => !value)} className="shrink-0 rounded-lg border px-3 py-2 text-sm">{fullScreen ? "Exit full screen" : "Full screen"}</button></>}
       {liveViewUrl && <button onClick={() => void releaseActive()} disabled={ending || opening} className="shrink-0 rounded-lg border px-3 py-2 text-sm disabled:opacity-60">{ending ? "Saving…" : "Save & end"}</button>}
     </div>
     {message && <p role="status" aria-live="polite" className="border-b border-[#e5e8e2] px-4 py-2 text-sm text-[#718077]">{message}</p>}
     {!viewerOpen && <div className="min-h-56 border-t border-[#e5e8e2] bg-white" aria-label="Browser is closed" />}
-    {liveViewUrl && viewerOpen && <div className={`relative border-t border-[#e5e8e2] ${fullScreen ? "min-h-0 flex-1" : ""}`}><iframe key={viewerKey} title="DeepScapes remote browser" src={liveViewUrl} loading="eager" onLoad={() => setMessage("")} className={`${fullScreen ? "h-full min-h-[30rem]" : "h-[42rem]"} w-full border-0 bg-white ${paused ? "pointer-events-none opacity-70" : ""}`} allow="clipboard-read; clipboard-write" />{paused && <div className="absolute inset-0 grid place-items-center bg-white/45 backdrop-blur-[1px]"><button onClick={() => setPaused(false)} className="rounded-full bg-[#315443] px-5 py-3 text-sm font-medium text-white shadow-lg">Resume browsing</button></div>}</div>}
+    {liveViewUrl && viewerOpen && <div className={`relative border-t border-[#e5e8e2] ${fullScreen ? "min-h-0 flex-1" : ""}`}><iframe key={viewerKey} title="DeepScapes remote browser" src={liveViewUrl} loading="eager" onError={() => { setDisconnected(true); setMessage("The live viewer could not load. Repair the connection to restore your saved session."); }} className={`${fullScreen ? "h-full min-h-[30rem]" : "h-[42rem]"} w-full border-0 bg-white ${paused ? "pointer-events-none opacity-70" : ""}`} allow="clipboard-read; clipboard-write" />{paused && <div className="absolute inset-0 grid place-items-center bg-white/45 backdrop-blur-[1px]"><button onClick={() => setPaused(false)} className="rounded-full bg-[#315443] px-5 py-3 text-sm font-medium text-white shadow-lg">Resume browsing</button></div>}</div>}
   </section>;
 }
 
