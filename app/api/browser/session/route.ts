@@ -229,9 +229,9 @@ export async function POST(request: Request) {
   // No inactivityTimeout: remote input may legitimately pause while the user reads.
   // Steel still enforces the plan's hard session lifetime.
   const requestedTimeout = Math.max(300_000, Math.min(86_400_000, Number(process.env.STEEL_SESSION_TIMEOUT_MS) || 900_000));
-  // The iframe already renders the local pointer. Do not stream Steel's OS
-  // cursor into the video as well, otherwise users see two cursors.
-  const viewerConfig = { debugConfig: { interactive: true, systemCursor: false }, timeout: requestedTimeout };
+  // Steel's cursor tracks the streamed desktop and receives interactive input.
+  // The host iframe pointer is hidden in the client so only this cursor shows.
+  const viewerConfig = { debugConfig: { interactive: true, systemCursor: true }, timeout: requestedTimeout };
   const sessionRequest = scape.browser?.profileId
     ? { ...viewerConfig, profileId: scape.browser.profileId, persistProfile: true }
     : { ...viewerConfig, persistProfile: true };
@@ -239,7 +239,7 @@ export async function POST(request: Request) {
   // A persisted profile briefly uploads after release. Wait for it instead of
   // silently starting a disconnected browser identity without its cookies.
   if (scape.browser?.profileId) {
-    for (let attempt = 0; response?.status === 409 && attempt < 5; attempt += 1) {
+    for (let attempt = 0; response?.status === 409 && attempt < 20; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       response = await createSteelSession(apiKey, sessionRequest);
     }
@@ -252,8 +252,11 @@ export async function POST(request: Request) {
       : { debugConfig: viewerConfig.debugConfig, persistProfile: true };
     response = await createSteelSession(apiKey, fallback);
   }
-  // A profile can be unavailable or still uploading. Browsing must still work.
-  if (response && !response.ok && scape.browser?.profileId) response = await createSteelSession(apiKey, viewerConfig);
+  // Do not silently create a fresh browser when a profile is still uploading:
+  // that would discard the authenticated state users expect after resuming.
+  if (response?.status === 409 && scape.browser?.profileId) {
+    return Response.json({ error: "Your saved browser identity is still being secured. Please retry in a few seconds; your session has not been replaced." }, { status: 409 });
+  }
   let session: SteelSession | undefined;
   try { session = response ? await response.json() as SteelSession : undefined; } catch { session = undefined; }
   if (!response?.ok || !session) {
