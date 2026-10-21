@@ -64,20 +64,26 @@ async function openRemotePages(connectUrl: string, tabs: BrowserTabSnapshot[]) {
   await withCdp(connectUrl, async (send) => {
     const before = await send<{ targetInfos?: { targetId: string; type: string; url: string }[] }>("Target.getTargets");
     const emptyTargets = (before.targetInfos || []).filter((item) => item.type === "page" && (item.url === "about:blank" || !item.url));
-    const created = await Promise.all(pages.map(async (tab) => ({ tab, target: await send<{ targetId?: string }>("Target.createTarget", { url: tab.url }) })));
-    await Promise.all(created.map(async ({ tab, target }) => {
-      if (!target.targetId || (!tab.active && !tab.scrollX && !tab.scrollY && !tab.fields?.length)) return;
+    // Target creation is intentionally sequential: concurrent creation lets
+    // Chrome race tabs into a different order. Rebuild in saved order and only
+    // focus the last active tab after every page has been restored.
+    const created: { tab: BrowserTabSnapshot; target: { targetId?: string } }[] = [];
+    for (const tab of pages) created.push({ tab, target: await send<{ targetId?: string }>("Target.createTarget", { url: tab.url }) });
+    let activeSessionId: string | undefined;
+    for (const { tab, target } of created) {
+      if (!target.targetId || (!tab.active && !tab.scrollX && !tab.scrollY && !tab.fields?.length)) continue;
       const attached = await send<{ sessionId?: string }>("Target.attachToTarget", { targetId: target.targetId, flatten: true });
-      if (!attached.sessionId) return;
+      if (!attached.sessionId) continue;
       if (tab.scrollX || tab.scrollY || tab.fields?.length) {
         await new Promise((resolve) => setTimeout(resolve, 350));
         const state = JSON.stringify({ scrollX: tab.scrollX || 0, scrollY: tab.scrollY || 0, fields: tab.fields || [] });
         const expression = `(() => { const state = ${state}; scrollTo(state.scrollX, state.scrollY); for (const field of state.fields) { const node = document.querySelector(field.selector); if (!node) continue; if (typeof field.checked === 'boolean') node.checked = field.checked; if (typeof field.selectedIndex === 'number') node.selectedIndex = field.selectedIndex; if (typeof field.value === 'string') node.value = field.value; node.dispatchEvent(new Event('input', { bubbles: true })); node.dispatchEvent(new Event('change', { bubbles: true })); } })()`;
         await send("Runtime.evaluate", { expression }, attached.sessionId).catch(() => undefined);
       }
-      if (tab.active) await send("Page.bringToFront", {}, attached.sessionId).catch(() => undefined);
-    }));
+      if (tab.active) activeSessionId = attached.sessionId;
+    }
     for (const target of emptyTargets) await send("Target.closeTarget", { targetId: target.targetId }).catch(() => undefined);
+    if (activeSessionId) await send("Page.bringToFront", {}, activeSessionId).catch(() => undefined);
   });
 }
 
@@ -100,17 +106,21 @@ async function captureRemoteSession(connectUrl: string, sessionId: string, name:
     const pages = (targets.targetInfos || []).filter((item) => item.type === "page" && /^https?:\/\//i.test(item.url)).slice(0, 20);
     const tabs: BrowserTabSnapshot[] = [];
     for (const page of pages) {
-      const tab: BrowserTabSnapshot = { url: page.url, title: page.title, active: Boolean(activeUrl && page.url === activeUrl) };
+      const tab: BrowserTabSnapshot = { url: page.url, title: page.title, active: false };
       try {
         const attached = await send<{ sessionId?: string }>("Target.attachToTarget", { targetId: page.targetId, flatten: true });
         if (attached.sessionId) {
-          const expression = `(() => { const sensitive = /pass|secret|token|card|cc-|otp|one-time/i; const esc = (value) => CSS.escape(String(value)); const selector = (node) => node.id ? '#' + esc(node.id) : node.name ? node.tagName.toLowerCase() + '[name="' + String(node.name).replace(/["\\]/g, '\\$&') + '"]' : ''; return { scrollX, scrollY, fields: Array.from(document.querySelectorAll('input, textarea, select')).map((node) => { const key = selector(node); const type = String(node.type || '').toLowerCase(); const autocomplete = String(node.autocomplete || ''); if (!key || type === 'password' || sensitive.test(node.name || '') || sensitive.test(autocomplete)) return null; return { selector: key, value: type === 'checkbox' || type === 'radio' ? undefined : String(node.value || '').slice(0, 2000), checked: type === 'checkbox' || type === 'radio' ? Boolean(node.checked) : undefined, selectedIndex: node.tagName === 'SELECT' ? node.selectedIndex : undefined }; }).filter(Boolean).slice(0, 100) }; })()`;
-          const evaluated = await send<{ result?: { value?: { scrollX?: number; scrollY?: number; fields?: BrowserTabSnapshot["fields"] } } }>("Runtime.evaluate", { expression, returnByValue: true }, attached.sessionId);
+          const expression = `(() => { const sensitive = /pass|secret|token|card|cc-|otp|one-time/i; const esc = (value) => CSS.escape(String(value)); const selector = (node) => node.id ? '#' + esc(node.id) : node.name ? node.tagName.toLowerCase() + '[name="' + String(node.name).replace(/["\\]/g, '\\$&') + '"]' : ''; return { active: document.hasFocus(), scrollX, scrollY, fields: Array.from(document.querySelectorAll('input, textarea, select')).map((node) => { const key = selector(node); const type = String(node.type || '').toLowerCase(); const autocomplete = String(node.autocomplete || ''); if (!key || type === 'password' || sensitive.test(node.name || '') || sensitive.test(autocomplete)) return null; return { selector: key, value: type === 'checkbox' || type === 'radio' ? undefined : String(node.value || '').slice(0, 2000), checked: type === 'checkbox' || type === 'radio' ? Boolean(node.checked) : undefined, selectedIndex: node.tagName === 'SELECT' ? node.selectedIndex : undefined }; }).filter(Boolean).slice(0, 100) }; })()`;
+          const evaluated = await send<{ result?: { value?: { active?: boolean; scrollX?: number; scrollY?: number; fields?: BrowserTabSnapshot["fields"] } } }>("Runtime.evaluate", { expression, returnByValue: true }, attached.sessionId);
           const value = evaluated.result?.value;
-          tab.scrollX = value?.scrollX; tab.scrollY = value?.scrollY; tab.fields = value?.fields;
+          tab.active = Boolean(value?.active); tab.scrollX = value?.scrollX; tab.scrollY = value?.scrollY; tab.fields = value?.fields;
         }
       } catch { /* Keep the URL even when a page blocks inspection. */ }
       tabs.push(tab);
+    }
+    if (tabs.length && !tabs.some((tab) => tab.active) && activeUrl) {
+      const traceActive = tabs.find((tab) => tab.url === activeUrl);
+      if (traceActive) traceActive.active = true;
     }
     if (tabs.length && !tabs.some((tab) => tab.active)) tabs[tabs.length - 1].active = true;
     return { sessionId, name, capturedAt: new Date().toISOString(), tabs, activeTab: Math.max(0, tabs.findIndex((tab) => tab.active)) };
