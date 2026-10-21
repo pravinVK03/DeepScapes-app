@@ -14,7 +14,7 @@ async function currentUser(request: Request) {
 
 function canAccess(scape: Scape, userId: string, email?: string, needsEdit = false) {
   if (scape.ownerId === userId) return true;
-  return scape.collaborators?.some((person) => (person.id === userId || person.email === email) && (!needsEdit || person.permission === "edit")) ?? false;
+  return scape.collaborators?.some((person) => (person.id === userId || (Boolean(email) && person.email === email)) && (!needsEdit || person.permission === "edit")) ?? false;
 }
 
 function destination(value?: string) {
@@ -30,7 +30,7 @@ type CdpResult<T = unknown> = { id?: number; result?: T; error?: { message?: str
 async function withCdp<T>(connectUrl: string, work: (send: <R = unknown>(method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<R>) => Promise<T>) {
   const socket = new WebSocket(connectUrl);
   await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("CDP connection timed out")), 8_000);
+    const timeout = setTimeout(() => { socket.close(); reject(new Error("CDP connection timed out")); }, 8_000);
     socket.addEventListener("open", () => { clearTimeout(timeout); resolve(); }, { once: true });
     socket.addEventListener("error", () => { clearTimeout(timeout); reject(new Error("CDP connection failed")); }, { once: true });
   });
@@ -122,7 +122,6 @@ function interactiveViewerUrl(value: string) {
   try { url = new URL(value); } catch { return undefined; }
   if (url.protocol !== "https:") return undefined;
   url.searchParams.set("interactive", "true");
-  url.searchParams.set("showControls", "true");
   return url.toString();
 }
 
@@ -212,7 +211,7 @@ export async function POST(request: Request) {
   // No inactivityTimeout: remote input may legitimately pause while the user reads.
   // Steel still enforces the plan's hard session lifetime.
   const requestedTimeout = Math.max(300_000, Math.min(86_400_000, Number(process.env.STEEL_SESSION_TIMEOUT_MS) || 900_000));
-  const viewerConfig = { debugConfig: { interactive: true }, timeout: requestedTimeout };
+  const viewerConfig = { debugConfig: { interactive: true, systemCursor: true }, timeout: requestedTimeout };
   const sessionRequest = scape.browser?.profileId
     ? { ...viewerConfig, profileId: scape.browser.profileId, persistProfile: true }
     : { ...viewerConfig, persistProfile: true };
@@ -246,20 +245,25 @@ export async function POST(request: Request) {
         : "Steel could not start a remote browser. Please retry shortly.";
     return Response.json({ error: message, providerStatus: status }, { status: 502 });
   }
-  // Steel documents debugUrl as the embeddable, interactive live view. Keep the
-  // legacy viewer URL as a compatibility fallback for older accounts.
-  const viewer = interactiveViewerUrl(session.debugUrl || "") || interactiveViewerUrl(session.sessionViewerUrl || "");
-  if (!viewer) return Response.json({ error: "Steel did not provide a browser viewer." }, { status: 502 });
+  // sessionViewerUrl is the stable embed URL returned by current Steel sessions.
+  // Some accounts still return only debugUrl, so retain it as a compatibility
+  // fallback. Prefer the session-scoped URL: old debug player URLs can resolve
+  // to Steel's 404 page even though the browser itself started successfully.
+  const viewer = interactiveViewerUrl(session.sessionViewerUrl || "") || interactiveViewerUrl(session.debugUrl || "");
+  if (!viewer) {
+    if (session.id) void fetch(`https://api.steel.dev/v1/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE", headers: { "steel-api-key": apiKey } }).catch(() => undefined);
+    return Response.json({ error: "Steel started a browser but did not provide a usable viewer. Please retry." }, { status: 502 });
+  }
   const start = destination(target);
-  if (session.id) {
+  const shouldRestore = Boolean(snapshot?.tabs?.length);
+  if (session.id && shouldRestore) {
     try {
-      const restoreTabs = snapshot?.tabs?.length ? snapshot.tabs : [{ url: start.url, title: start.label, active: true }];
-      await openRemotePages(session.websocketUrl || steelConnectUrl(session.id, apiKey), restoreTabs);
+      await openRemotePages(session.websocketUrl || steelConnectUrl(session.id, apiKey), snapshot!.tabs);
     } catch {
-      // The embedded Steel controls remain available if the initial navigation is delayed.
+      // The live view stays available even if a page blocks state restoration.
     }
   }
-  return Response.json({ sessionId: session.id, profileId: session.profileId || scape.browser?.profileId, liveViewUrl: viewer, expiresAt: session.expiresAt, destination: start, sessionName: sessionName?.trim() || snapshot?.name || start.label, sourceSessionId });
+  return Response.json({ sessionId: session.id, profileId: session.profileId || scape.browser?.profileId, liveViewUrl: viewer, expiresAt: session.expiresAt, destination: start, sessionName: sessionName?.trim() || snapshot?.name || start.label, sourceSessionId, deferredNavigation: Boolean(session.id && !shouldRestore && start.url !== "about:blank") });
 }
 
 export async function GET(request: Request) {

@@ -102,7 +102,7 @@ Restart the development server after changing environment variables. Keep all se
 
 1. Create a Supabase project.
 2. Open the Supabase SQL Editor.
-3. Run [`supabase-schema.sql`](./supabase-schema.sql).
+3. Run [`supabase-schema.sql`](./supabase-schema.sql). Existing projects should run it again after upgrades; its `if not exists` statements safely add performance indexes without changing existing Scapes.
 4. Enable **Email** and **Google** in Authentication → Providers.
 5. Add local and production URLs in Authentication → URL Configuration.
 

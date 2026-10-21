@@ -6,6 +6,8 @@ const key = "deepscapes-data";
 const changeEvent = "deepscapes-change";
 let cachedRaw: string | null | undefined;
 let cachedScapes: Scape[] = starterScapes;
+let remoteScapesRequest: Promise<Scape[] | undefined> | undefined;
+let lastRemoteScapesSync = 0;
 
 export function getScapes(): Scape[] {
   if (typeof window === "undefined") return starterScapes;
@@ -55,16 +57,26 @@ export async function persistScape(scape: Scape) {
   });
   if (!response.ok) throw new Error("DeepScapes could not save this change. Check your database connection and try again.");
 }
-export async function loadRemoteScapes(): Promise<Scape[] | undefined> {
-  const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
-  const response = await fetch("/api/scapes", { headers: token ? { Authorization: `Bearer ${token}` } : {} }).catch(() => undefined);
-  if (!response?.ok) return undefined;
-  try {
-    const data = await response.json() as { scapes?: Scape[] };
-    return Array.isArray(data.scapes) ? data.scapes : undefined;
-  } catch {
-    return undefined;
-  }
+export async function loadRemoteScapes({ force = false }: { force?: boolean } = {}): Promise<Scape[] | undefined> {
+  // Route changes can mount the home screen more than once. Share an in-flight
+  // request and reuse a very recent result so navigation never creates a burst
+  // of identical Supabase reads.
+  if (!force && lastRemoteScapesSync && Date.now() - lastRemoteScapesSync < 15_000) return cachedScapes;
+  if (remoteScapesRequest) return remoteScapesRequest;
+  remoteScapesRequest = (async () => {
+    const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
+    const response = await fetch("/api/scapes", { headers: token ? { Authorization: `Bearer ${token}` } : {} }).catch(() => undefined);
+    if (!response?.ok) return undefined;
+    try {
+      const data = await response.json() as { scapes?: Scape[] };
+      if (!Array.isArray(data.scapes)) return undefined;
+      lastRemoteScapesSync = Date.now();
+      return data.scapes;
+    } catch {
+      return undefined;
+    }
+  })();
+  try { return await remoteScapesRequest; } finally { remoteScapesRequest = undefined; }
 }
 function subscribe(onStoreChange: () => void) { window.addEventListener(changeEvent, onStoreChange); return () => window.removeEventListener(changeEvent, onStoreChange); }
 const serverSnapshot: Scape[] = [];

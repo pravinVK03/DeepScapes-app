@@ -9,6 +9,9 @@ create table if not exists public.scapes (
 );
 
 create index if not exists scapes_updated_at_idx on public.scapes (updated_at desc);
+-- Supports the targeted owner/collaborator JSON containment queries used by
+-- the Scape loader. Existing projects can run this statement independently.
+create index if not exists scapes_payload_gin_idx on public.scapes using gin (payload jsonb_path_ops);
 
 create table if not exists public.templates (
   name text primary key,

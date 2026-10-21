@@ -187,13 +187,23 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 35_000);
     const name = request?.name || sessionName.trim() || target.trim() || "Browsing session";
     const response = await fetch("/api/browser/session", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId: scape.id, target, sessionName: name, snapshot: request?.snapshot, sourceSessionId: request?.snapshot.sessionId }), signal: controller.signal }).catch(() => undefined); window.clearTimeout(timeout);
-    let data: { liveViewUrl?: string; error?: string; sessionId?: string; profileId?: string; expiresAt?: string; sessionName?: string; destination?: { url: string; label: string } } | undefined;
+    let data: { liveViewUrl?: string; error?: string; sessionId?: string; profileId?: string; expiresAt?: string; sessionName?: string; destination?: { url: string; label: string }; deferredNavigation?: boolean } | undefined;
     try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
     if (!response?.ok || !data?.liveViewUrl) { setOpening(false); setMessage(data?.error ?? "Could not start the remote browser."); return; }
     const activeTab = request?.snapshot.tabs[request.snapshot.activeTab ?? 0] || request?.snapshot.tabs.find((tab) => tab.active);
     const event: WebLog = { id: `session-${data.sessionId}`, type: request ? `session ${request.mode}d` : "session started", time: new Date().toISOString(), url: activeTab?.url || data.destination?.url, target: data.sessionName || name, detail: request ? `${request.snapshot.tabs.length} saved tab${request.snapshot.tabs.length === 1 ? "" : "s"} reconstructed from ${request.snapshot.sessionId.slice(0, 8)}` : "Remote browser opened", sessionId: data.sessionId || "" };
     persist({ activeSessionId: data.sessionId, activeSessionName: data.sessionName || name, profileId: data.profileId, liveViewUrl: data.liveViewUrl, expiresAt: data.expiresAt, lastTarget: target, lastUrl: activeTab?.url || data.destination?.url, activity: [event, ...(browserRef.current?.activity || [])] });
     checkpointFailuresRef.current = 0; setDisconnected(false); setSessionName(data.sessionName || name); setLiveViewUrl(data.liveViewUrl); setViewerOpen(true); setViewerKey((value) => value + 1); setOpening(false); setMessage(request ? `${request.snapshot.tabs.length} saved tabs restored.` : "");
+    // A brand-new browser can paint immediately. Send its first navigation in
+    // the background instead of holding the viewer hostage to a CDP round trip.
+    if (data.deferredNavigation && data.sessionId && target.trim()) {
+      void (async () => {
+        const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 20_000);
+        const navigation = await fetch("/api/browser/session", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ scapeId: scape.id, sessionId: data.sessionId, target }), signal: controller.signal }).catch(() => undefined);
+        window.clearTimeout(timeout);
+        if (!navigation?.ok) setMessage("The browser opened, but the first page could not load. Enter an address and press Go to retry.");
+      })();
+    }
   }
   async function open(targetOverride?: string) {
     const target = targetOverride ?? input;
@@ -271,7 +281,7 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     </div>
     {message && <p role="status" aria-live="polite" className="border-b border-[#e5e8e2] px-4 py-2 text-sm text-[#718077]">{message}</p>}
     {!viewerOpen && <div className="min-h-56 border-t border-[#e5e8e2] bg-white" aria-label="Browser is closed" />}
-    {liveViewUrl && viewerOpen && <div className={`relative border-t border-[#e5e8e2] ${fullScreen ? "min-h-0 flex-1" : ""}`}><iframe key={viewerKey} title="DeepScapes remote browser" src={liveViewUrl} loading="eager" onError={() => { setDisconnected(true); setMessage("The live viewer could not load. Repair the connection to restore your saved session."); }} className={`${fullScreen ? "h-full min-h-[30rem]" : "h-[42rem]"} w-full border-0 bg-white ${paused ? "pointer-events-none opacity-70" : ""}`} allow="clipboard-read; clipboard-write" />{paused && <div className="absolute inset-0 grid place-items-center bg-white/45 backdrop-blur-[1px]"><button onClick={() => setPaused(false)} className="rounded-full bg-[#315443] px-5 py-3 text-sm font-medium text-white shadow-lg">Resume browsing</button></div>}</div>}
+    {liveViewUrl && viewerOpen && <div className={`relative border-t border-[#e5e8e2] ${fullScreen ? "min-h-0 flex-1" : ""}`}><iframe key={viewerKey} title="DeepScapes remote browser" src={liveViewUrl} loading="eager" referrerPolicy="no-referrer" onError={() => { setDisconnected(true); setMessage("The live viewer could not load. Repair the connection to restore your saved session."); }} className={`${fullScreen ? "h-full min-h-[30rem]" : "h-[42rem]"} w-full border-0 bg-white ${paused ? "pointer-events-none opacity-70" : ""}`} allow="clipboard-read; clipboard-write; fullscreen" allowFullScreen />{paused && <div className="absolute inset-0 grid place-items-center bg-white/45 backdrop-blur-[1px]"><button onClick={() => setPaused(false)} className="rounded-full bg-[#315443] px-5 py-3 text-sm font-medium text-white shadow-lg">Resume browsing</button></div>}</div>}
   </section>;
 }
 

@@ -13,7 +13,7 @@ async function currentUser(request: Request) {
 
 function canAccess(scape: Scape, userId: string, email?: string, needsEdit = false) {
   if (scape.ownerId === userId) return true;
-  const collaborator = scape.collaborators?.find((person) => person.id === userId || person.email === email);
+  const collaborator = scape.collaborators?.find((person) => person.id === userId || (Boolean(email) && person.email === email));
   return Boolean(collaborator && (!needsEdit || collaborator.permission === "edit"));
 }
 
@@ -23,12 +23,23 @@ export async function GET(request: Request) {
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
   const quota = rateLimit(request, "scape-read", 120, 60 * 60 * 1000, user.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
-  const { data, error } = await getSupabase()
-    .from("scapes")
-    .select("payload, created_at, updated_at")
-    .order("updated_at", { ascending: false });
+  // Scope the database query to the signed-in user's JSON payload instead of
+  // downloading every Scape and filtering in memory. This keeps the home page
+  // responsive as the workspace grows and avoids exposing unrelated payloads
+  // to this server path.
+  const supabase = getSupabase();
+  const select = "id, payload, created_at, updated_at";
+  const filters = [
+    supabase.from("scapes").select(select).contains("payload", { ownerId: user.id }).order("updated_at", { ascending: false }),
+    supabase.from("scapes").select(select).contains("payload", { collaborators: [{ id: user.id }] }).order("updated_at", { ascending: false }),
+    ...(user.email ? [supabase.from("scapes").select(select).contains("payload", { collaborators: [{ email: user.email }] }).order("updated_at", { ascending: false })] : []),
+  ];
+  const results = await Promise.all(filters);
+  const error = results.find((result) => result.error)?.error;
   if (error) return Response.json({ error: error.message }, { status: 500 });
-  const scapes = data
+  const rows = [...new Map(results.flatMap((result) => result.data || []).map((row) => [row.id, row])).values()]
+    .sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime());
+  const scapes = rows
     .map((row) => ({ ...(row.payload as Scape), createdAt: (row.payload as Scape).createdAt ?? row.created_at, updatedAt: row.updated_at ?? (row.payload as Scape).updatedAt }))
     .filter((scape) => canAccess(scape, user.id, user.email));
   return Response.json({ scapes, connected: true });
