@@ -18,6 +18,7 @@ DeepScapes is an authenticated, project-centric workspace for keeping notes, tas
 - An embedded Steel remote browser for research without opening many local tabs.
 - Per-Scape browser profiles, resumable browsing context, and detailed Steel activity traces.
 - Cost guards and rate limiting around Steel, Supabase storage, authentication, and Scape persistence.
+- Vercel Web Analytics for privacy-friendly visitor and page-view reporting.
 - Responsive layouts for desktop and mobile.
 
 ## Technology
@@ -27,7 +28,7 @@ DeepScapes is an authenticated, project-centric workspace for keeping notes, tas
 - Tailwind CSS 4
 - Supabase Auth, PostgreSQL, and Storage
 - Steel Sessions API for embedded remote browsing
-- Vercel for production hosting
+- Vercel for production hosting and Web Analytics
 
 ## Local development
 

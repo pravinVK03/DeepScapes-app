@@ -36,7 +36,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
   }, [profileOpen]);
 
   useEffect(() => {
-    if (!profileOpen || !user) { setCanConnectGmail(false); return; }
+    if (!profileOpen || !user) return;
     let active = true;
     void (async () => {
       const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
@@ -86,7 +86,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
         <div className="flex items-center gap-2">
           {user && pathname.match(/^\/workspace\/[^/]+$/) && <Link href={`${pathname}/share`} className="hidden rounded-lg border border-[#dce1d9] px-3 py-2 text-sm sm:inline-flex">Share</Link>}
           {user ? <div ref={profileRef} className="relative">
-            <button onClick={() => setProfileOpen((open) => !open)} className="profile-trigger flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition" aria-expanded={profileOpen} aria-label="Open profile menu">
+            <button onClick={() => { setCanConnectGmail(false); setProfileOpen((open) => !open); }} className="profile-trigger flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition" aria-expanded={profileOpen} aria-label="Open profile menu">
               <span className="grid h-6 w-6 place-items-center rounded-full bg-[#315443] text-xs font-semibold text-white">{username?.slice(0, 1).toUpperCase()}</span>
               <span className="hidden max-w-28 truncate sm:inline">{username}</span>
             </button>
