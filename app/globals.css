@@ -67,7 +67,7 @@ html.dark .text-\[\#a95b54\] { color: #ff9b92 !important; }
 .workspace-cover h1, .workspace-cover p { color: inherit !important; }
 .workspace-cover .workspace-edit { border-color: rgb(255 255 255 / .58); color: #fff; }
 .workspace-cover .workspace-edit:hover { background: rgb(255 255 255 / .15); border-color: #fff; }
-html.dark .workspace-cover { background: #111 !important; color: #f5f5f5; }
+html.dark .workspace-cover { background-color: #111 !important; color: #f5f5f5; }
 html.dark .template-swatch { background: #2a2a2a !important; color: #f5f5f5 !important; }
 html.dark .profile-menu, html.dark .share-dialog { background: #171717 !important; }
 html.dark .profile-menu a, html.dark .profile-menu button { color: #f5f5f5 !important; }
