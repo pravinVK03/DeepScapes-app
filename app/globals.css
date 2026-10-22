@@ -73,13 +73,16 @@ html.dark .profile-menu, html.dark .share-dialog { background: #171717 !importan
 html.dark .profile-menu a, html.dark .profile-menu button { color: #f5f5f5 !important; }
 html.dark .profile-menu .profile-signout { color: #ff9b92 !important; }
 
-.theme-choice[data-selected="true"] { background: #315443; color: #fff; }
-.theme-choice[data-selected="false"] { color: #718077; }
-.theme-choice[data-selected="false"]:hover { background: #edf0df; color: #17231d; }
-html.dark .theme-choice[data-selected="true"] { background: #f5f5f5 !important; border-color: #f5f5f5 !important; color: #111 !important; }
-html.dark .theme-choice[data-selected="true"]:hover { background: #dedede !important; color: #111 !important; }
-html.dark .theme-choice[data-selected="false"] { color: #a3a3a3 !important; }
-html.dark .theme-choice[data-selected="false"]:hover { background: #2a2a2a !important; color: #fff !important; }
+.theme-toggle { position: relative; width: 3rem; height: 1.75rem; flex: none; border: 1px solid #c6cec8; border-radius: 999px; background: #dce1dd; transition: background-color .2s ease, border-color .2s ease; }
+.theme-toggle:hover { border-color: #8d9b92; }
+.theme-toggle:focus-visible { outline: 2px solid #315443; outline-offset: 2px; }
+.theme-toggle[data-checked="true"] { background: #315443; border-color: #315443; }
+.theme-toggle-thumb { position: absolute; top: 3px; left: 3px; width: 1.25rem; height: 1.25rem; border-radius: 999px; background: #fff; box-shadow: 0 1px 4px rgb(23 35 29 / .25); transition: transform .2s ease; }
+.theme-toggle[data-checked="true"] .theme-toggle-thumb { transform: translateX(1.25rem); }
+html.dark .profile-menu .theme-toggle[data-checked="true"] { background: #f5f5f5 !important; border-color: #f5f5f5 !important; }
+html.dark .profile-menu .theme-toggle[data-checked="true"]:hover { background: #dedede !important; border-color: #fff !important; }
+html.dark .theme-toggle:focus-visible { outline-color: #f5f5f5; }
+html.dark .theme-toggle-thumb { background: #111; }
 
 html.dark .profile-trigger {
   background: #171717 !important;

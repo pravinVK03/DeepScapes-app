@@ -50,7 +50,7 @@ export async function POST(request: Request) {
   const { error } = await supabase.storage.from(bucket).upload(path, bytes.buffer, { contentType: "application/json; charset=utf-8", upsert: false });
   if (error) {
     console.error("Feedback upload failed", { code: error.name, statusCode: error.statusCode });
-    return Response.json({ error: "Feedback could not be saved. Please try again.", supportEmail: "padmanathan.kdev@gmail.com" }, { status: 500 });
+    return Response.json({ error: "Feedback could not be saved. Please try again.", supportEmail: "padmanathank.dev@gmail.com" }, { status: 500 });
   }
   const delivery = await sendFeedbackCopy(feedback, new URL(request.url).origin);
   return Response.json({ saved: true, emailed: delivery.sent, delivery: delivery.sent ? undefined : delivery.reason }, { status: 201 });

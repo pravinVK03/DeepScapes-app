@@ -20,7 +20,7 @@ const configBucket = "deepscapes-private-config";
 const tokenPath = "feedback/gmail-refresh-token.v1";
 let configBucketReady: Promise<string | undefined> | undefined;
 
-export const feedbackRecipient = process.env.FEEDBACK_TO_EMAIL?.trim() || "padmanathan.kdev@gmail.com";
+export const feedbackRecipient = process.env.FEEDBACK_TO_EMAIL?.trim() || "padmanathank.dev@gmail.com";
 
 export function gmailRedirectUri(origin: string) {
   return process.env.GMAIL_REDIRECT_URI?.trim() || new URL("/api/feedback/gmail/callback", origin).toString();

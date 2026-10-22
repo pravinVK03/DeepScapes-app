@@ -16,10 +16,11 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
   const [gmailMessage, setGmailMessage] = useState("");
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [canConnectGmail, setCanConnectGmail] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark" | "system">(() => {
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof window === "undefined") return "dark";
     const stored = window.localStorage.getItem("deepscapes-theme");
-    return stored === "light" || stored === "dark" || stored === "system" ? stored : "dark";
+    if (stored === "light" || stored === "dark") return stored;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
   const profileRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -48,14 +49,10 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
   }, [profileOpen, user]);
 
   useEffect(() => {
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => document.documentElement.classList.toggle("dark", theme === "dark" || (theme === "system" && media.matches));
-    apply();
-    media.addEventListener("change", apply);
-    return () => media.removeEventListener("change", apply);
+    document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
-  function chooseTheme(next: "light" | "dark" | "system") {
+  function chooseTheme(next: "light" | "dark") {
     setTheme(next);
     window.localStorage.setItem("deepscapes-theme", next);
   }
@@ -91,14 +88,21 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
               <span className="hidden max-w-28 truncate sm:inline">{username}</span>
             </button>
             {profileOpen && <div className="profile-menu absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-[#dce1d9] bg-white p-1 shadow-xl">
-              <div className="border-b border-[#e5e8e2] px-3 py-2"><p className="truncate text-sm font-medium">{username}</p><p className="truncate text-xs text-[#718077]">{user.email}</p></div>
-              <Link onClick={() => setProfileOpen(false)} href="/scapes" className="block rounded-lg px-3 py-2 text-sm hover:bg-[#edf0df]">Your Scapes</Link>
-              <Link onClick={() => setProfileOpen(false)} href="/create" className="block rounded-lg px-3 py-2 text-sm hover:bg-[#edf0df]">Create Scape</Link>
+              <div className="px-3 py-2"><p className="truncate text-sm font-medium">{username}</p><p className="truncate text-xs text-[#718077]">{user.email}</p></div>
               {canConnectGmail && <div className="mx-2 my-1 border-t border-[#e5e8e2] pt-1">
                 <button type="button" onClick={() => void connectGmail()} disabled={connectingGmail} className="block w-full rounded-lg px-2 py-2 text-left text-sm hover:bg-[#edf0df] disabled:opacity-50">{connectingGmail ? "Opening Gmail…" : "Connect feedback inbox"}</button>
                 {gmailMessage && <p className="px-2 pb-2 text-xs text-[#a95b54]">{gmailMessage}</p>}
               </div>}
-              <div className="mx-2 my-1 border-t border-[#e5e8e2] pt-2"><p className="px-1 pb-2 text-xs font-medium uppercase tracking-[.12em] text-[#718077]">Appearance</p><div className="grid grid-cols-3 gap-1" role="group" aria-label="Choose app theme">{(["light", "dark", "system"] as const).map((option) => <button key={option} type="button" onClick={() => chooseTheme(option)} className="theme-choice rounded-md px-2 py-2 text-xs capitalize transition" data-selected={theme === option} aria-pressed={theme === option}>{option}</button>)}</div></div>
+              <div className="mx-2 my-1 border-t border-[#e5e8e2] px-1 pb-1 pt-2">
+                <p className="pb-2 text-xs font-medium uppercase tracking-[.12em] text-[#718077]">Appearance</p>
+                <div className="flex items-center justify-between gap-3 rounded-lg py-1">
+                  <span className="text-sm text-[#718077]">Light</span>
+                  <button type="button" role="switch" aria-checked={theme === "dark"} aria-label="Toggle dark appearance" onClick={() => chooseTheme(theme === "dark" ? "light" : "dark")} className="theme-toggle" data-checked={theme === "dark"}>
+                    <span className="theme-toggle-thumb" />
+                  </button>
+                  <span className="text-sm text-[#718077]">Dark</span>
+                </div>
+              </div>
               <button onClick={() => { setProfileOpen(false); void signOut(); }} className="profile-signout block w-full rounded-lg px-3 py-2 text-left text-sm text-[#a95b54] hover:bg-[#edf0df]">Sign out</button>
             </div>}
           </div> : !loading && !compact && <Link href="/login" className="hidden rounded-lg px-2 py-2 text-sm text-[#718077] sm:block">Sign in</Link>}
