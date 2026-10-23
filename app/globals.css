@@ -142,8 +142,9 @@ html.dark .profile-trigger[aria-expanded="true"] {
 }
 
 html.dark .profile-trigger > span:last-child { color: #f5f5f5 !important; }
-html.dark .google-auth-button { background: #f5f5f5 !important; border-color: #f5f5f5 !important; color: #111 !important; }
-html.dark .google-auth-button:hover { background: #dedede !important; border-color: #fff !important; color: #111 !important; }
+html.dark .google-auth-button, html.dark .google-auth-button * { background: #f5f5f5 !important; border-color: #f5f5f5 !important; color: #111 !important; }
+html.dark .google-auth-button:hover, html.dark .google-auth-button:hover * { background: #dedede !important; border-color: #fff !important; color: #111 !important; }
+html.dark .auth-primary-action, html.dark .auth-primary-action * { color: #111 !important; }
 html.dark .resource-item:hover { background: #262626 !important; border-color: #5a5a5a !important; }
 html.dark .web-session-card { background: #191919 !important; border-color: #3a3a3a !important; }
 html.dark .web-session-card[open] { background: #1d1d1d !important; }

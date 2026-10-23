@@ -84,8 +84,8 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
       <div className="flex w-full items-center justify-between px-5 py-4 sm:px-8 lg:px-12">
         <div className="flex items-center gap-8">
           <Link href={user ? "/scapes" : "/"} className="group flex items-center rounded-xl py-1" aria-label="DeepScapes home">
-            <Image src="/deepscapes-logo-black.png?v=20260908" alt="DeepScapes" width={228} height={45} className="logo-light h-auto w-40 sm:w-48" priority unoptimized />
-            <Image src="/deepscapes-logo-white.png?v=20260908" alt="DeepScapes" width={228} height={45} className="logo-dark h-auto w-40 sm:w-48" priority unoptimized />
+            <Image src="/deepscapes-logo-black.svg" alt="DeepScapes" width={238} height={59} className="logo-light h-auto w-40 sm:w-48" priority />
+            <Image src="/deepscapes-logo-white.svg" alt="DeepScapes" width={238} height={59} className="logo-dark h-auto w-40 sm:w-48" priority />
           </Link>
           {!compact && <nav className="hidden items-center gap-1 sm:flex" aria-label="Main navigation">
             {navItems.map((item) => <Link href={item.href} key={item.href} className={`rounded-lg px-3 py-2 text-sm font-medium transition ${item.href === "/" ? pathname === "/" ? "bg-[#edf0df] text-[#17231d]" : "text-[#718077] hover:bg-[#edf0df] hover:text-[#17231d]" : pathname.startsWith(item.href) ? "bg-[#edf0df] text-[#17231d]" : "text-[#718077] hover:bg-[#edf0df] hover:text-[#17231d]"}`}>{item.label}</Link>)}

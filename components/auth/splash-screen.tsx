@@ -12,10 +12,10 @@ export function SplashScreen() {
           ↘
         </div>
         <Image
-          src="/deepscapes-logo-white.png"
+          src="/deepscapes-logo-white.svg"
           alt="DeepScapes"
-          width={384}
-          height={117}
+          width={238}
+          height={59}
           priority
           className="mx-auto mt-7 h-auto w-64 max-w-full object-contain"
         />
