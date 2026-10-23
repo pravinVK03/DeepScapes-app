@@ -129,13 +129,12 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     try {
       if (isSignup && signupStage === "email" && !profilePending) {
         if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setMessage("Enter a valid email address."); return; }
-        const redirect = new URL("/signup", window.location.origin);
-        if (destination !== "/scapes") redirect.searchParams.set("next", destination);
-        const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true, emailRedirectTo: redirect.toString() } });
-        if (error) { setMessage(error.message); return; }
+        const response = await fetch("/api/auth/magic-link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim(), destination }) }).catch(() => undefined);
+        const data = await response?.json().catch(() => undefined) as { error?: string } | undefined;
+        if (!response?.ok) { setMessage(data?.error || "We could not send the confirmation link. Please try again."); return; }
         setConfirmationSent(true);
         setMessageTone("success");
-        setMessage("Check your email and follow the confirmation link to continue.");
+        setMessage("Check your email and follow the secure link to continue.");
         return;
       }
       if (isRecovery) {
@@ -309,11 +308,10 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               <input
                 required
                 value={isSignup ? email : username}
-                onChange={(event) =>
-                  isSignup
-                    ? setEmail(event.target.value)
-                    : setUsername(event.target.value)
-                }
+                onChange={(event) => {
+                  if (isSignup) { setEmail(event.target.value); setConfirmationSent(false); }
+                  else setUsername(event.target.value);
+                }}
                 type={isSignup ? "email" : "text"}
                 autoComplete={isSignup ? "email" : "username"}
                 className="mt-2 w-full rounded-xl border px-4 py-3 outline-none"
