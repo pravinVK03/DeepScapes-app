@@ -28,6 +28,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
   const username = typeof user?.user_metadata.username === "string" ? user.user_metadata.username : user?.email?.split("@")[0];
   const displayName = typeof user?.user_metadata.display_name === "string" ? user.user_metadata.display_name : username;
   const avatar = typeof user?.user_metadata.avatar === "string" ? user.user_metadata.avatar : "";
+  const avatarImage = avatar.startsWith("data:image/");
 
   useEffect(() => {
     if (!profileOpen) return;
@@ -94,11 +95,14 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
           {user && pathname.match(/^\/workspace\/[^/]+$/) && <Link href={`${pathname}/share`} className="hidden rounded-lg border border-[#dce1d9] px-3 py-2 text-sm sm:inline-flex">Share</Link>}
           {user ? <div ref={profileRef} className="relative">
             <button onClick={() => { setCanConnectGmail(false); setProfileOpen((open) => !open); }} className="profile-trigger flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition" aria-expanded={profileOpen} aria-label="Open profile menu">
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-[#315443] text-xs font-semibold text-white">{avatar || displayName?.slice(0, 1).toUpperCase()}</span>
+              <span className="grid h-6 w-6 place-items-center rounded-full bg-[#315443] bg-cover bg-center text-xs font-semibold text-white" style={avatarImage ? { backgroundImage: `url(${avatar})` } : undefined}>{avatarImage ? "" : avatar || displayName?.slice(0, 1).toUpperCase()}</span>
               <span className="hidden max-w-28 truncate sm:inline">{displayName}</span>
             </button>
             {profileOpen && <div className="profile-menu absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-[#dce1d9] bg-white p-1 shadow-xl">
               <div className="px-3 py-2"><p className="truncate text-sm font-medium">{displayName}</p><p className="truncate text-xs text-[#718077]">{user.email}</p></div>
+              <div className="mx-2 my-1 border-t border-[#e5e8e2] pt-1">
+                <Link href="/settings/profile" onClick={() => setProfileOpen(false)} className="block rounded-lg px-2 py-2 text-sm hover:bg-[#edf0df]">Profile settings</Link>
+              </div>
               {canConnectGmail && <div className="mx-2 my-1 border-t border-[#e5e8e2] pt-1">
                 <button type="button" onClick={() => void connectGmail()} disabled={connectingGmail} className="block w-full rounded-lg px-2 py-2 text-left text-sm hover:bg-[#edf0df] disabled:opacity-50">{connectingGmail ? "Opening Gmail…" : "Connect feedback inbox"}</button>
                 {gmailMessage && <p className="px-2 pb-2 text-xs text-[#a95b54]">{gmailMessage}</p>}

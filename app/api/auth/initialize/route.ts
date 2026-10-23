@@ -25,6 +25,11 @@ export async function POST(request: Request) {
   const quota = rateLimit(request, "auth-initialize", 12, 60 * 60 * 1000, user.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   const metadata = user.user_metadata as Record<string, unknown>;
+  // Passwordless sign-up creates a session as soon as its code is confirmed.
+  // Keep first-time users out of the workspace until they complete or skip profile setup.
+  if (metadata.profile_completed !== true && typeof metadata.username !== "string") {
+    return response({ profilePending: true });
+  }
   const { data: existingProfile, error: profileReadError } = await supabase.from("profiles").select("username").eq("id", user.id).maybeSingle();
   if (profileReadError) return response({ error: profileReadError.message }, 500);
   let username = existingProfile?.username || usernameFor(user.email, metadata);

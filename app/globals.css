@@ -184,6 +184,8 @@ html.dark .feedback-star[data-active="true"] svg {
 .auth-primary-action:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 3px; }
 .auth-inline-link { text-decoration-line: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: color .18s ease, text-decoration-color .18s ease; }
 .auth-inline-link:hover { text-decoration-color: currentColor; }
+.auth-route-link::after { content: " →"; display: inline-block; opacity: 0; transform: translateX(-5px); transition: opacity .18s ease, transform .18s ease; }
+.auth-route-link:hover::after { opacity: 1; transform: translateX(0); }
 html.dark .auth-primary-action:hover:not(:disabled) { box-shadow: 0 12px 26px rgb(255 255 255 / .12); }
 @keyframes auth-step-in { from { opacity: .55; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .auth-flow-card { animation: auth-step-in .24s ease-out both; }
