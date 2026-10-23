@@ -113,6 +113,41 @@ http://localhost:3000/login
 https://deepscapes.vercel.app/login
 ```
 
+### Required: lock email/password sign-up with a verification code
+
+DeepScapes requires a verified email before an email/password account can sign in. Configure this once in the Supabase dashboard:
+
+1. Go to **Authentication → Providers → Email** and turn on **Confirm email**. Save the change. This prevents a new email/password account from receiving a usable session before verification.
+2. Go to **Authentication → Email Templates → Confirm signup**.
+3. Set the subject to:
+
+```text
+Your DeepScapes verification code
+```
+
+4. Replace the entire template body with the following HTML, then save it. It deliberately uses `{{ .Token }}` and does **not** contain `{{ .ConfirmationURL }}`: users receive a code to enter in DeepScapes, not an automatic sign-in link.
+
+```html
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;background:#f5f7fb;color:#172554;font-family:Arial,Helvetica,sans-serif;">
+    <main style="max-width:560px;margin:32px auto;background:#ffffff;border:1px solid #dbeafe;border-radius:20px;padding:36px;">
+      <p style="margin:0 0 20px;font-size:12px;font-weight:700;letter-spacing:2px;color:#1d4ed8;">DEEPSCAPES</p>
+      <h1 style="margin:0 0 16px;font-size:28px;line-height:1.2;">Confirm your email</h1>
+      <p style="margin:0 0 18px;font-size:16px;line-height:1.6;">Welcome to DeepScapes — a project-centric workspace for your notes, tasks, files, research, and collaborators.</p>
+      <p style="margin:0 0 18px;font-size:16px;line-height:1.6;">Enter this verification code in DeepScapes to finish creating your account:</p>
+      <p style="margin:0 0 22px;padding:16px;border-radius:12px;background:#eff6ff;font-size:28px;font-weight:700;letter-spacing:8px;text-align:center;color:#172554;">{{ .Token }}</p>
+      <p style="margin:0;font-size:14px;line-height:1.6;color:#64748b;">If you did not start this sign-up, you can safely ignore this email. Need help? Contact padmanathank.dev@gmail.com.</p>
+    </main>
+  </body>
+</html>
+```
+
+5. In **Authentication → URL Configuration**, set the Site URL to `https://deepscapes.vercel.app` and keep the login URL above in the redirect allow list.
+6. Create a fresh test account. The app should show **Enter your verification code**, and the email should contain only the code. After the correct code is entered, DeepScapes signs the user out and sends them to sign in normally.
+
+Google sign-in does not need this extra code: Google already confirms ownership of the selected Google account during OAuth.
+
 The application creates its private `deepscapes-resources` storage bucket when the first authenticated upload is prepared. Files upload directly from the browser with a short-lived signed upload token; the server never exposes the service-role key.
 
 Feedback is first saved as JSON in the private `deepscapes-feedback` bucket and then copied to the configured Gmail inbox. A mail-provider failure never discards the stored submission.
