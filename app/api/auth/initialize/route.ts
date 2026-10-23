@@ -24,9 +24,10 @@ export async function POST(request: Request) {
   if (!user.email_confirmed_at) return response({ error: "Confirm your email before continuing" }, 403);
   const quota = rateLimit(request, "auth-initialize", 12, 60 * 60 * 1000, user.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
+  const metadata = user.user_metadata as Record<string, unknown>;
   const { data: existingProfile, error: profileReadError } = await supabase.from("profiles").select("username").eq("id", user.id).maybeSingle();
   if (profileReadError) return response({ error: profileReadError.message }, 500);
-  let username = existingProfile?.username || usernameFor(user.email, user.user_metadata as Record<string, unknown>);
+  let username = existingProfile?.username || usernameFor(user.email, metadata);
   if (!existingProfile) {
     const candidates = [username, `${username.slice(0, 24)}-${user.id.slice(0, 6)}`, `${username.slice(0, 21)}-${user.id.slice(0, 9)}`];
     let profileCreated = false;

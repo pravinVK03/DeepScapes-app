@@ -185,6 +185,8 @@ html.dark .feedback-star[data-active="true"] svg {
 .auth-inline-link { text-decoration-line: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: color .18s ease, text-decoration-color .18s ease; }
 .auth-inline-link:hover { text-decoration-color: currentColor; }
 html.dark .auth-primary-action:hover:not(:disabled) { box-shadow: 0 12px 26px rgb(255 255 255 / .12); }
+@keyframes auth-step-in { from { opacity: .55; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.auth-flow-card { animation: auth-step-in .24s ease-out both; }
 html.dark .feedback-footer { background: #0a0a0a; }
 html.dark .feedback-panel { background: #141414 !important; border-color: #373737 !important; }
 html.dark .feedback-submit { background: #f5f5f5 !important; border-color: #f5f5f5 !important; color: #111 !important; }

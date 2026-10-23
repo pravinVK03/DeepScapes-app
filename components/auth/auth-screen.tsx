@@ -21,7 +21,10 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
-  const [signupStage, setSignupStage] = useState<"details" | "email">("details");
+  const [signupStage, setSignupStage] = useState<"email" | "details" | "profile" | "verification">("email");
+  const [displayName, setDisplayName] = useState("");
+  const [avatar, setAvatar] = useState("🌿");
+  const [appearancePreference, setAppearancePreference] = useState<"system" | "light" | "dark">("system");
   const [verificationEmail, setVerificationEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [message, setMessage] = useState("");
@@ -34,7 +37,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     ? searchParams.get("next")!
     : "/scapes";
   const verifyingEmail = Boolean(verificationEmail);
-  const collectingSignupEmail = isSignup && signupStage === "email";
+  const collectingSignupVerification = isSignup && signupStage === "verification";
 
   function passwordIssue(value: string) {
     if (value.length < 5) return "Use at least 5 characters for your password.";
@@ -68,13 +71,18 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     event.preventDefault();
     setMessage("");
     setMessageTone("error");
+    if (isSignup && signupStage === "email") {
+      if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setMessage("Enter a valid email address.");
+      setSignupStage("details");
+      return;
+    }
     if (isSignup && signupStage === "details") {
       const normalized = username.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
       if (!/^[a-z0-9-]{3,32}$/.test(normalized)) return setMessage("Use a name with at least 3 letters or numbers.");
       const issue = passwordIssue(password);
       if (issue) return setMessage(issue);
       if (password !== passwordConfirmation) return setMessage("The passwords do not match.");
-      setSignupStage("email");
+      setSignupStage("profile");
       return;
     }
     const supabase = getBrowserSupabase();
@@ -142,20 +150,22 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
           email,
           password,
           options: {
-            data: { username: normalized },
-            emailRedirectTo: `${window.location.origin}/login`,
+            data: { username: normalized, display_name: displayName.trim() || normalized, avatar, appearance_preference: appearancePreference },
           },
         });
-        if (error) setMessage(error.message);
+        if (error) {
+          setMessage(/already registered/i.test(error.message) ? "This email already has an account. Sign in instead." : error.message);
+        }
         else if (data.session) {
           await supabase.auth.signOut();
           setMessage(
             "Email verification is not enabled yet. Enable Confirm email in Supabase before accepting sign-ups.",
           );
         } else {
+          setSignupStage("verification");
           setVerificationEmail(email);
           setMessageTone("success");
-          setMessage("Enter the verification code sent to your email.");
+          setMessage("If this email is available for a new account, we sent a verification code. Existing members can sign in instead.");
         }
         return;
       }
@@ -236,7 +246,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
       </main>
     );
 
-  if (verifyingEmail)
+  if (verifyingEmail && !isSignup)
     return (
       <main className="min-h-screen">
         <AppHeader compact />
@@ -330,32 +340,44 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         </div>
         <form
           onSubmit={submit}
-          className="rounded-[2rem] border border-[#e5e8e2] bg-white p-6 shadow-sm sm:p-8"
+          key={isSignup ? `${signupStage}-${verifyingEmail ? "code" : "email"}` : isRecovery ? "recovery" : "login"}
+          className="auth-flow-card rounded-[2rem] border border-[#e5e8e2] bg-white p-6 shadow-sm sm:p-8"
         >
           <p className="text-sm text-[#718077]">
             {isRecovery
               ? "Secure your account"
               : isSignup
-                ? collectingSignupEmail
+                ? collectingSignupVerification
                   ? "Verify your email"
-                  : "Create your account"
+                  : signupStage === "email"
+                    ? "Create your account"
+                    : signupStage === "details"
+                      ? "Set up your sign-in"
+                      : "Make your profile yours"
                 : "Welcome back"}
           </p>
           <h2 className="mt-2 text-3xl font-medium tracking-[-.05em]">
             {isRecovery
               ? "Choose a new password."
               : isSignup
-                ? collectingSignupEmail
-                  ? "Where should we send your code?"
-                  : "Begin with your name."
+                ? collectingSignupVerification
+                  ? verifyingEmail
+                    ? "Enter your verification code."
+                    : "Where should we send your code?"
+                  : signupStage === "email"
+                    ? "Start with your email."
+                    : signupStage === "details"
+                      ? "Choose a username and password."
+                      : "Finish your profile."
                 : "Return to your Scapes."}
           </h2>
+          {isSignup && collectingSignupVerification && !verifyingEmail && <p className="mt-4 text-sm leading-6 text-[#718077]">We&apos;ll send a one-time verification code to this address.</p>}
           {resetComplete && (
             <p role="status" className="mt-4 text-sm text-[#315443]">
               Password updated. Sign in with your new password.
             </p>
           )}
-          {!isRecovery && isSignup && !collectingSignupEmail && (
+          {!isRecovery && isSignup && signupStage === "details" && (
             <label className="mt-7 block text-sm font-medium">
               Username
               <input
@@ -367,12 +389,12 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               />
             </label>
           )}
-          {!isRecovery && (!isSignup || collectingSignupEmail) && (
+          {!isRecovery && (!isSignup || signupStage === "email" || collectingSignupVerification) && (
             <label className="mt-5 block text-sm font-medium">
               {isSignup ? "Email" : "Username or email"}
               <input
                 required
-                value={isSignup ? email : username}
+                value={isSignup ? verificationEmail || email : username}
                 onChange={(event) =>
                   isSignup
                     ? setEmail(event.target.value)
@@ -380,11 +402,28 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                 }
                 type={isSignup ? "email" : "text"}
                 autoComplete={isSignup ? "email" : "username"}
+                readOnly={isSignup && Boolean(verificationEmail)}
                 className="mt-2 w-full rounded-xl border px-4 py-3 outline-none"
               />
             </label>
           )}
-          {(!isSignup || !collectingSignupEmail) && <div className="mt-5">
+          {isSignup && collectingSignupVerification && verifyingEmail && (
+            <label className="mt-5 block text-sm font-medium">
+              Verification code
+              <input
+                required
+                value={verificationCode}
+                onChange={(event) => setVerificationCode(event.target.value.replace(/\s/g, ""))}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9A-Za-z]+"
+                placeholder="Enter code"
+                className="mt-2 w-full rounded-xl border px-4 py-3 tracking-[.2em] outline-none"
+              />
+              <span className="mt-2 block text-xs font-normal text-[#718077]">We sent a code to {verificationEmail}.</span>
+            </label>
+          )}
+          {(!isSignup || signupStage === "details") && <div className="mt-5">
             <label className="block text-sm font-medium">
               <span>{isRecovery ? "New password" : "Password"}</span>
               <span className="relative mt-2 block">
@@ -465,6 +504,26 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               </button>
             )}
           </div>}
+          {isSignup && signupStage === "profile" && (
+            <div className="mt-6 space-y-5">
+              <label className="block text-sm font-medium">
+                Your name
+                <input required value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="How should we call you?" autoComplete="name" className="mt-2 w-full rounded-xl border px-4 py-3 outline-none" />
+              </label>
+              <fieldset>
+                <legend className="text-sm font-medium">Choose an avatar</legend>
+                <div className="mt-2 flex flex-wrap gap-2">{["🌿", "✦", "☁️", "◉", "◆", "☼"].map((option) => <button key={option} type="button" onClick={() => setAvatar(option)} aria-label={`Use ${option} as your avatar`} aria-pressed={avatar === option} className={`grid h-11 w-11 place-items-center rounded-full border text-lg transition hover:-translate-y-0.5 ${avatar === option ? "border-[#315443] bg-[#edf0df]" : "border-[#dce1d9] bg-white"}`}>{option}</button>)}</div>
+              </fieldset>
+              <label className="block text-sm font-medium">
+                Appearance preference
+                <select value={appearancePreference} onChange={(event) => setAppearancePreference(event.target.value as typeof appearancePreference)} className="mt-2 w-full rounded-xl border bg-white px-4 py-3 outline-none">
+                  <option value="system">Follow my device</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </label>
+            </div>
+          )}
           {message && (
             <p
               role="status"
@@ -483,17 +542,17 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               : isRecovery
                 ? "Update password"
               : isSignup
-                  ? collectingSignupEmail
-                    ? "Send verification code"
-                    : "Continue"
+                  ? collectingSignupVerification
+                    ? verifyingEmail ? "Confirm account" : "Send verification code"
+                    : signupStage === "profile" ? "Create account" : "Continue"
                   : "Sign in"}
           </button>
-          {collectingSignupEmail && (
-            <button type="button" onClick={() => setSignupStage("details")} className="auth-inline-link mx-auto mt-4 block text-sm text-[#718077] hover:text-[#315443]">
-              Back to account details
+          {isSignup && signupStage !== "email" && (
+            <button type="button" onClick={() => { setMessage(""); if (collectingSignupVerification) { setVerificationEmail(""); setVerificationCode(""); setSignupStage("profile"); } else if (signupStage === "profile") setSignupStage("details"); else setSignupStage("email"); }} className="auth-inline-link mx-auto mt-4 block text-sm text-[#718077] hover:text-[#315443]">
+              Back
             </button>
           )}
-          {!isRecovery && (!isSignup || !collectingSignupEmail) && (
+          {!isRecovery && (!isSignup || signupStage === "email") && (
             <>
               <div className="my-5 flex items-center gap-3 text-xs text-[#8b968e]">
                 <span className="h-px flex-1 bg-[#e5e8e2]" />

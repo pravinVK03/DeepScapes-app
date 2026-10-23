@@ -23,8 +23,15 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text not null unique check (username ~ '^[a-z0-9-]{3,32}$'),
   email text not null,
+  display_name text,
+  avatar text,
+  preferences jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles add column if not exists display_name text;
+alter table public.profiles add column if not exists avatar text;
+alter table public.profiles add column if not exists preferences jsonb not null default '{}'::jsonb;
 
 alter table public.scapes enable row level security;
 alter table public.templates enable row level security;
