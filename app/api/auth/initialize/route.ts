@@ -9,32 +9,47 @@ function usernameFor(email: string, metadata: Record<string, unknown>) {
   return value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "my-scape";
 }
 
+function response(body: unknown, status = 200) {
+  return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+}
+
 export async function POST(request: Request) {
-  if (!databaseEnabled) return Response.json({ connected: false }, { status: 503 });
+  if (!databaseEnabled) return response({ connected: false }, 503);
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (!token) return Response.json({ error: "Sign in required" }, { status: 401 });
+  if (!token) return response({ error: "Sign in required" }, 401);
   const supabase = getSupabase();
   const { data: userData, error: userError } = await supabase.auth.getUser(token);
   const user = userData.user;
-  if (userError || !user?.email) return Response.json({ error: "Session is invalid" }, { status: 401 });
+  if (userError || !user?.email) return response({ error: "Session is invalid" }, 401);
+  if (!user.email_confirmed_at) return response({ error: "Confirm your email before continuing" }, 403);
   const quota = rateLimit(request, "auth-initialize", 12, 60 * 60 * 1000, user.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
-  let username = usernameFor(user.email, user.user_metadata as Record<string, unknown>);
-  const { data: nameOwner } = await supabase.from("profiles").select("id").eq("username", username).maybeSingle();
-  if (nameOwner && nameOwner.id !== user.id) username = `${username.slice(0, 24)}-${user.id.slice(0, 6)}`;
-  const { error: profileError } = await supabase.from("profiles").upsert({ id: user.id, username, email: user.email }, { onConflict: "id" });
-  if (profileError) return Response.json({ error: profileError.message }, { status: 409 });
+  const { data: existingProfile, error: profileReadError } = await supabase.from("profiles").select("username").eq("id", user.id).maybeSingle();
+  if (profileReadError) return response({ error: profileReadError.message }, 500);
+  let username = existingProfile?.username || usernameFor(user.email, user.user_metadata as Record<string, unknown>);
+  if (!existingProfile) {
+    const candidates = [username, `${username.slice(0, 24)}-${user.id.slice(0, 6)}`, `${username.slice(0, 21)}-${user.id.slice(0, 9)}`];
+    let profileCreated = false;
+    for (const candidate of candidates) {
+      const { error } = await supabase.from("profiles").insert({ id: user.id, username: candidate, email: user.email });
+      if (!error) { username = candidate; profileCreated = true; break; }
+      if (error.code !== "23505") return response({ error: error.message }, 500);
+      const { data: retryProfile } = await supabase.from("profiles").select("username").eq("id", user.id).maybeSingle();
+      if (retryProfile) { username = retryProfile.username; profileCreated = true; break; }
+    }
+    if (!profileCreated) return response({ error: "Could not reserve a profile name. Please try again." }, 409);
+  }
 
   const { data: existing, error: scapeError } = await supabase.from("scapes").select("id").contains("payload", { ownerId: user.id }).limit(1);
-  if (scapeError) return Response.json({ error: scapeError.message }, { status: 500 });
+  if (scapeError) return response({ error: scapeError.message }, 500);
   if (!existing.length) {
     const scape: Scape = {
       id: `scape-${user.id}`, title: `${username}'s Scape`, description: "A personal space for everything you are working on.", template: "Blank Scape", cover: "#1d4ed8", updated: "Just created", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ownerId: user.id,
       collaborators: [{ id: user.id, name: username, email: user.email, permission: "edit" }], resources: [],
       activity: [{ id: "created", action: "Scape created", detail: "Your personal Scape", time: "Just now" }],
     };
-    const { error } = await supabase.from("scapes").insert({ id: scape.id, payload: scape });
-    if (error) return Response.json({ error: error.message }, { status: 500 });
+    const { error } = await supabase.from("scapes").upsert({ id: scape.id, payload: scape }, { onConflict: "id", ignoreDuplicates: true });
+    if (error) return response({ error: error.message }, 500);
   }
-  return Response.json({ username });
+  return response({ username });
 }

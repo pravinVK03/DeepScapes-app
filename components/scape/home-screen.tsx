@@ -67,16 +67,16 @@ function FeedbackForm() {
 }
 
 export default function HomeScreen() {
-  const scapes = useScapes(); const { user } = useAuth(); const [query, setQuery] = useState(""); const loadedUser = useRef<string | undefined>(undefined);
+  const scapes = useScapes(); const { user, profileReady } = useAuth(); const [query, setQuery] = useState(""); const loadedUser = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!user) { loadedUser.current = undefined; return; }
+    if (!user || !profileReady) { loadedUser.current = undefined; return; }
     if (loadedUser.current !== user.id) { loadedUser.current = user.id; saveScapes([]); }
     void loadRemoteScapes({ force: true }).then((remoteScapes) => {
       // Do not replace a user's local view with an empty list after an
       // intermittent network or server failure.
       if (remoteScapes) saveScapes(remoteScapes);
     });
-  }, [user]);
+  }, [profileReady, user]);
   const { personalScape, recentScapes } = useMemo(() => {
     const personal = scapes.find((scape) => scape.id === `scape-${user?.id}`);
     const recent = scapes.filter((scape) => scape.id !== personal?.id);

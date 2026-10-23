@@ -18,6 +18,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
@@ -31,6 +32,12 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     ? searchParams.get("next")!
     : "/scapes";
   const verifyingEmail = Boolean(verificationEmail);
+
+  function passwordIssue(value: string) {
+    if (value.length < 10) return "Use at least 10 characters for your password.";
+    if (!/[a-zA-Z]/.test(value) || !/\d/.test(value)) return "Use a password with at least one letter and one number.";
+    return "";
+  }
 
   useEffect(() => {
     if (user && !isRecovery && !resetComplete && !verified && !verifyingEmail)
@@ -94,6 +101,9 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
           );
           return;
         }
+        const issue = passwordIssue(password);
+        if (issue) { setMessage(issue); return; }
+        if (password !== passwordConfirmation) { setMessage("The passwords do not match."); return; }
         const { error } = await supabase.auth.updateUser({ password });
         if (error) {
           setMessage(error.message);
@@ -114,6 +124,9 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
           setMessage("Use a name with at least 3 letters or numbers.");
           return;
         }
+        const issue = passwordIssue(password);
+        if (issue) { setMessage(issue); return; }
+        if (password !== passwordConfirmation) { setMessage("The passwords do not match."); return; }
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -350,7 +363,8 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                     ? setEmail(event.target.value)
                     : setUsername(event.target.value)
                 }
-                autoComplete="username"
+                type={isSignup ? "email" : "text"}
+                autoComplete={isSignup ? "email" : "username"}
                 className="mt-2 w-full rounded-xl border px-4 py-3 outline-none"
               />
             </label>
@@ -361,7 +375,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               <span className="relative mt-2 block">
                 <input
                   required
-                  minLength={6}
+                  minLength={isSignup || isRecovery ? 10 : 6}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   type={showPassword ? "text" : "password"}
@@ -396,6 +410,21 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                 </button>
               </span>
             </label>
+            {(isSignup || isRecovery) && (
+              <label className="mt-4 block text-sm font-medium">
+                Confirm password
+                <input
+                  required
+                  minLength={10}
+                  value={passwordConfirmation}
+                  onChange={(event) => setPasswordConfirmation(event.target.value)}
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  className="mt-2 w-full rounded-xl border px-4 py-3 outline-none"
+                />
+                <span className="mt-2 block text-xs font-normal text-[#718077]">Use 10 or more characters, including a letter and a number.</span>
+              </label>
+            )}
             {!isSignup && !isRecovery && (
               <button
                 type="button"

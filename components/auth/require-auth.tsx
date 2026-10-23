@@ -6,7 +6,7 @@ import { useAuth } from "./auth-provider";
 import { PageLoader } from "@/components/ui/page-loader";
 
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, profileReady } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -14,7 +14,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     if (!loading && !user) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
   }, [loading, pathname, router, user]);
 
-  if (loading || !user) {
+  if (loading || !user || !profileReady) {
     return <PageLoader />;
   }
 
