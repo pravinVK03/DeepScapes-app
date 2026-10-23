@@ -18,11 +18,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const supabase = getBrowserSupabase();
     if (!supabase) return;
-    void supabase.auth.getSession().then(async ({ data }) => { await initialize(data.session); setSession(data.session); setLoading(false); });
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => { void (async () => { await initialize(next); setSession(next); setLoading(false); })(); });
+    void supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); void initialize(data.session); });
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => { setSession(next); setLoading(false); void initialize(next); });
     return () => subscription.subscription.unsubscribe();
   }, []);
-  const value = useMemo<AuthValue>(() => ({ user: session?.user ?? null, loading, signOut: async () => { await getBrowserSupabase()?.auth.signOut(); } }), [session, loading]);
+  const value = useMemo<AuthValue>(() => ({ user: session?.user ?? null, loading, signOut: async () => { setSession(null); await getBrowserSupabase()?.auth.signOut(); } }), [session, loading]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

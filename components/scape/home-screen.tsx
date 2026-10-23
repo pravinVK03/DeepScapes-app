@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { CSSProperties, FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/ui/app-header";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Icon } from "@/components/ui/icons";
@@ -67,10 +67,11 @@ function FeedbackForm() {
 }
 
 export default function HomeScreen() {
-  const scapes = useScapes(); const { user } = useAuth(); const [query, setQuery] = useState("");
+  const scapes = useScapes(); const { user } = useAuth(); const [query, setQuery] = useState(""); const loadedUser = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!user) return;
-    void loadRemoteScapes().then((remoteScapes) => {
+    if (!user) { loadedUser.current = undefined; return; }
+    if (loadedUser.current !== user.id) { loadedUser.current = user.id; saveScapes([]); }
+    void loadRemoteScapes({ force: true }).then((remoteScapes) => {
       // Do not replace a user's local view with an empty list after an
       // intermittent network or server failure.
       if (remoteScapes) saveScapes(remoteScapes);
