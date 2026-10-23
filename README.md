@@ -113,38 +113,19 @@ http://localhost:3000/login
 https://deepscapes.vercel.app/login
 ```
 
-### Required: passwordless sign-up code email
+### Email confirmation without template customization
 
-DeepScapes uses a code-first sign-up flow: **email → code → optional profile**. The app intentionally does not disclose whether an address is already registered until the recipient proves they own that inbox. Configure this once in the Supabase dashboard:
+DeepScapes uses Supabase's default Magic Link email: **email → confirmation link → optional profile**. No email-template editing or OTP configuration is required. Entering an address does not disclose whether it already belongs to an account; only the recipient can confirm it.
 
-1. Go to **Authentication → Providers → Email** and enable the Email provider. Keep **Confirm email** enabled for any legacy email/password accounts.
-2. Go to **Authentication → Email Templates → Magic Link** (named **Magic Link / OTP** in some dashboard versions). This is the template used by the current DeepScapes code flow — not the default Confirm signup template.
-3. Set the subject to:
+1. Go to **Authentication → Providers → Email** and enable the Email provider.
+2. In **Authentication → URL Configuration**, set the Site URL to `https://deepscapes.vercel.app` and add both URLs to the redirect allow list:
 
 ```text
-Your DeepScapes verification code
+https://deepscapes.vercel.app/login
+https://deepscapes.vercel.app/signup
 ```
 
-4. Replace the entire template body with the following HTML, then save it. It deliberately uses `{{ .Token }}` and does **not** contain `{{ .ConfirmationURL }}`: users receive a code to enter in DeepScapes, not an automatic sign-in link.
-
-```html
-<!doctype html>
-<html lang="en">
-  <body style="margin:0;background:#f5f7fb;color:#172554;font-family:Arial,Helvetica,sans-serif;">
-    <main style="max-width:560px;margin:32px auto;background:#ffffff;border:1px solid #dbeafe;border-radius:20px;padding:36px;">
-      <p style="margin:0 0 20px;font-size:12px;font-weight:700;letter-spacing:2px;color:#1d4ed8;">DEEPSCAPES</p>
-      <h1 style="margin:0 0 16px;font-size:28px;line-height:1.2;">Your DeepScapes verification code</h1>
-      <p style="margin:0 0 18px;font-size:16px;line-height:1.6;">Welcome to DeepScapes — a project-centric workspace for your notes, tasks, files, research, and collaborators.</p>
-      <p style="margin:0 0 18px;font-size:16px;line-height:1.6;">Enter this verification code in DeepScapes to continue securely. If this is your first visit, you can finish your profile or skip it for later.</p>
-      <p style="margin:0 0 22px;padding:16px;border-radius:12px;background:#eff6ff;font-size:28px;font-weight:700;letter-spacing:8px;text-align:center;color:#172554;">{{ .Token }}</p>
-      <p style="margin:0;font-size:14px;line-height:1.6;color:#64748b;">If you did not start this sign-up, you can safely ignore this email. Need help? Contact padmanathank.dev@gmail.com.</p>
-    </main>
-  </body>
-</html>
-```
-
-5. In **Authentication → URL Configuration**, set the Site URL to `https://deepscapes.vercel.app` and keep the login URL above in the redirect allow list.
-6. Create a fresh test account. The app should show **Enter your verification code**, and the email should contain the code. After confirmation, new users can complete their profile or skip it; existing users continue directly to their Scapes.
+3. Create a fresh test account. The default Supabase email opens a secure confirmation link. New users then finish or skip profile setup; existing users continue to their Scapes.
 
 Google sign-in does not need this extra code: Google already confirms ownership of the selected Google account during OAuth.
 

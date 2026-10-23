@@ -21,12 +21,11 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
-  const [signupStage, setSignupStage] = useState<"email" | "profile" | "verification">("email");
+  const [signupStage, setSignupStage] = useState<"email" | "profile">("email");
   const [displayName, setDisplayName] = useState("");
   const [avatar, setAvatar] = useState("🌿");
   const [appearancePreference, setAppearancePreference] = useState<"system" | "light" | "dark">("system");
-  const [verificationEmail, setVerificationEmail] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
+  const [confirmationSent, setConfirmationSent] = useState(false);
   const [message, setMessage] = useState("");
   const [messageTone, setMessageTone] = useState<"error" | "success">("error");
   const [busy, setBusy] = useState(false);
@@ -36,8 +35,8 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const destination = searchParams.get("next")?.startsWith("/")
     ? searchParams.get("next")!
     : "/scapes";
-  const verifyingEmail = Boolean(verificationEmail);
-  const collectingSignupVerification = isSignup && signupStage === "verification";
+  const profilePending = isSignup && Boolean(user) && user?.user_metadata.profile_completed !== true && typeof user?.user_metadata.username !== "string";
+  const showingProfile = signupStage === "profile" || profilePending;
 
   function passwordIssue(value: string) {
     if (value.length < 5) return "Use at least 5 characters for your password.";
@@ -89,7 +88,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   }
 
   useEffect(() => {
-    if (user && !isRecovery && !resetComplete && !verified && !verifyingEmail && !(isSignup && signupStage === "profile"))
+    if (user && !isRecovery && !resetComplete && !verified && !(isSignup && showingProfile))
       router.replace(destination);
   }, [
     destination,
@@ -98,9 +97,8 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     router,
     user,
     verified,
-    verifyingEmail,
     isSignup,
-    signupStage,
+    showingProfile,
   ]);
 
   async function resolveLoginEmail(value: string) {
@@ -121,45 +119,23 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     if (!supabase)
       return setMessage("Add the Supabase publishable key to enable sign-in.");
     setPendingAction(
-      verifyingEmail
-        ? "Confirming your account…"
-        : isRecovery
+      isRecovery
           ? "Updating your password…"
           : isSignup
-            ? signupStage === "email" ? "Sending your code…" : "Saving your profile…"
+            ? showingProfile ? "Saving your profile…" : "Sending your confirmation link…"
             : "Signing you in…",
     );
     setBusy(true);
     try {
-      if (isSignup && signupStage === "email") {
+      if (isSignup && signupStage === "email" && !profilePending) {
         if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setMessage("Enter a valid email address."); return; }
-        const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } });
+        const redirect = new URL("/signup", window.location.origin);
+        if (destination !== "/scapes") redirect.searchParams.set("next", destination);
+        const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true, emailRedirectTo: redirect.toString() } });
         if (error) { setMessage(error.message); return; }
-        setVerificationEmail(email.trim());
-        setSignupStage("verification");
+        setConfirmationSent(true);
         setMessageTone("success");
-        setMessage("We sent a verification code. Enter it to continue.");
-        return;
-      }
-      if (verifyingEmail) {
-        const { data, error } = await supabase.auth.verifyOtp({
-          email: verificationEmail,
-          token: verificationCode.trim(),
-          type: "email",
-        });
-        if (error) {
-          setMessage(error.message);
-          return;
-        }
-        if (typeof data.user?.user_metadata.username === "string") {
-          setRedirecting("sign-in");
-          router.replace(destination);
-        } else {
-          setSignupStage("profile");
-          setVerificationEmail("");
-          setVerificationCode("");
-          setMessage("");
-        }
+        setMessage("Check your email and follow the confirmation link to continue.");
         return;
       }
       if (isRecovery) {
@@ -183,7 +159,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
       }
 
       if (isSignup) {
-        if (signupStage !== "profile") return;
+        if (!showingProfile) return;
         const normalized = username
           .trim()
           .toLowerCase()
@@ -276,79 +252,6 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
       </main>
     );
 
-  if (verifyingEmail && !isSignup)
-    return (
-      <main className="min-h-screen">
-        <AppHeader compact />
-        <section className="mx-auto grid max-w-6xl gap-10 px-5 py-12 sm:px-8 lg:grid-cols-[1fr_440px] lg:py-20">
-          <div className="max-w-xl pt-4">
-            <p className="text-sm font-medium uppercase tracking-[.18em] text-[#718077]">
-              Everything in one space
-            </p>
-            <h1 className="mt-5 text-5xl font-medium tracking-[-.065em] sm:text-6xl">
-              One last
-              <br />
-              <em className="font-serif font-normal">step to get started.</em>
-            </h1>
-          </div>
-          <form
-            onSubmit={submit}
-            className="rounded-[2rem] border border-[#e5e8e2] bg-white p-6 shadow-sm sm:p-8"
-          >
-            <p className="text-sm text-[#718077]">Confirm your email</p>
-            <h2 className="mt-2 text-3xl font-medium tracking-[-.05em]">
-              Enter your verification code.
-            </h2>
-            <p className="mt-4 text-sm leading-6 text-[#718077]">
-              We sent a code to {verificationEmail}. Enter it below to confirm
-              your account.
-            </p>
-            <label className="mt-6 block text-sm font-medium">
-              Verification code
-              <input
-                required
-                value={verificationCode}
-                onChange={(event) =>
-                  setVerificationCode(event.target.value.replace(/\s/g, ""))
-                }
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9A-Za-z]+"
-                placeholder="Enter code"
-                className="mt-2 w-full rounded-xl border px-4 py-3 tracking-[.2em] outline-none"
-              />
-            </label>
-            {message && (
-              <p
-                role="status"
-                aria-live="polite"
-                className={`mt-4 text-sm ${messageTone === "success" ? "text-[#315443]" : "text-[#a95b54]"}`}
-              >
-                {message}
-              </p>
-            )}
-            <button
-              disabled={busy || unavailable}
-              className="auth-primary-action mt-6 w-full rounded-xl bg-[#315443] py-3 text-sm font-medium text-white transition hover:bg-[#243f32] disabled:opacity-50"
-            >
-              {busy ? pendingAction : "Confirm account"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setVerificationEmail("");
-                setVerificationCode("");
-                setMessage("");
-              }}
-              className="mt-4 w-full rounded-xl px-4 py-2 text-sm text-[#718077] hover:text-[#315443]"
-            >
-              Use a different email
-            </button>
-          </form>
-        </section>
-      </main>
-    );
-
   return (
     <main className="min-h-screen">
       <AppHeader compact />
@@ -370,15 +273,15 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         </div>
         <form
           onSubmit={submit}
-          key={isSignup ? `${signupStage}-${verifyingEmail ? "code" : "email"}` : isRecovery ? "recovery" : "login"}
+          key={isSignup ? (showingProfile ? "profile" : "email") : isRecovery ? "recovery" : "login"}
           className="auth-flow-card rounded-[2rem] border border-[#e5e8e2] bg-white p-6 shadow-sm sm:p-8"
         >
           <p className="text-sm text-[#718077]">
             {isRecovery
               ? "Secure your account"
               : isSignup
-                ? collectingSignupVerification
-                  ? "Verify your email"
+                ? showingProfile
+                  ? "Make your profile yours"
                   : signupStage === "email"
                     ? "Create your account"
                     : "Make your profile yours"
@@ -388,27 +291,24 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             {isRecovery
               ? "Choose a new password."
               : isSignup
-                ? collectingSignupVerification
-                  ? verifyingEmail
-                    ? "Enter your verification code."
-                    : "Where should we send your code?"
+                ? showingProfile
+                  ? "Finish your profile."
                   : signupStage === "email"
                     ? "Start with your email."
                     : "Finish your profile."
                 : "Return to your Scapes."}
           </h2>
-          {isSignup && collectingSignupVerification && !verifyingEmail && <p className="mt-4 text-sm leading-6 text-[#718077]">We&apos;ll send a one-time verification code to this address.</p>}
           {resetComplete && (
             <p role="status" className="mt-4 text-sm text-[#315443]">
               Password updated. Sign in with your new password.
             </p>
           )}
-          {!isRecovery && (!isSignup || signupStage === "email" || collectingSignupVerification) && (
+          {!isRecovery && (!isSignup || (signupStage === "email" && !profilePending)) && (
             <label className="mt-5 block text-sm font-medium">
               {isSignup ? "Email" : "Username or email"}
               <input
                 required
-                value={isSignup ? verificationEmail || email : username}
+                value={isSignup ? email : username}
                 onChange={(event) =>
                   isSignup
                     ? setEmail(event.target.value)
@@ -416,25 +316,8 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                 }
                 type={isSignup ? "email" : "text"}
                 autoComplete={isSignup ? "email" : "username"}
-                readOnly={isSignup && Boolean(verificationEmail)}
                 className="mt-2 w-full rounded-xl border px-4 py-3 outline-none"
               />
-            </label>
-          )}
-          {isSignup && collectingSignupVerification && verifyingEmail && (
-            <label className="mt-5 block text-sm font-medium">
-              Verification code
-              <input
-                required
-                value={verificationCode}
-                onChange={(event) => setVerificationCode(event.target.value.replace(/\s/g, ""))}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9A-Za-z]+"
-                placeholder="Enter code"
-                className="mt-2 w-full rounded-xl border px-4 py-3 tracking-[.2em] outline-none"
-              />
-              <span className="mt-2 block text-xs font-normal text-[#718077]">We sent a code to {verificationEmail}.</span>
             </label>
           )}
           {!isSignup && <div className="mt-5">
@@ -518,7 +401,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               </button>
             )}
           </div>}
-          {isSignup && signupStage === "profile" && (
+          {isSignup && showingProfile && (
             <div className="mt-6 space-y-5">
               <label className="block text-sm font-medium">
                 Username
@@ -565,22 +448,20 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               : isRecovery
                 ? "Update password"
               : isSignup
-                  ? collectingSignupVerification
-                    ? verifyingEmail ? "Confirm account" : "Send verification code"
-                    : signupStage === "profile" ? "Create account" : "Continue"
+                  ? showingProfile ? "Create account" : confirmationSent ? "Resend confirmation link" : "Continue"
                   : "Sign in"}</span><span className="auth-action-arrow" aria-hidden="true">→</span>
           </button>
-          {isSignup && signupStage === "profile" && (
+          {isSignup && showingProfile && (
             <button type="button" onClick={() => void skipProfile()} disabled={busy || unavailable} className="auth-inline-link mx-auto mt-4 block text-sm text-[#718077] hover:text-[#315443] disabled:opacity-50">
               Skip for now
             </button>
           )}
-          {isSignup && signupStage !== "email" && (
-            <button type="button" onClick={() => { setMessage(""); setVerificationEmail(""); setVerificationCode(""); setSignupStage("email"); }} className="auth-inline-link mx-auto mt-4 block text-sm text-[#718077] hover:text-[#315443]">
+          {isSignup && signupStage === "profile" && !profilePending && (
+            <button type="button" onClick={() => { setMessage(""); setSignupStage("email"); }} className="auth-inline-link mx-auto mt-4 block text-sm text-[#718077] hover:text-[#315443]">
               Back
             </button>
           )}
-          {!isRecovery && (!isSignup || signupStage === "email") && (
+          {!isRecovery && (!isSignup || (signupStage === "email" && !profilePending)) && (
             <>
               <div className="my-5 flex items-center gap-3 text-xs text-[#8b968e]">
                 <span className="h-px flex-1 bg-[#e5e8e2]" />
