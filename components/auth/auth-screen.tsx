@@ -20,6 +20,8 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
+  const [signupStage, setSignupStage] = useState<"details" | "email">("details");
   const [verificationEmail, setVerificationEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [message, setMessage] = useState("");
@@ -32,10 +34,10 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     ? searchParams.get("next")!
     : "/scapes";
   const verifyingEmail = Boolean(verificationEmail);
+  const collectingSignupEmail = isSignup && signupStage === "email";
 
   function passwordIssue(value: string) {
-    if (value.length < 10) return "Use at least 10 characters for your password.";
-    if (!/[a-zA-Z]/.test(value) || !/\d/.test(value)) return "Use a password with at least one letter and one number.";
+    if (value.length < 5) return "Use at least 5 characters for your password.";
     return "";
   }
 
@@ -66,6 +68,15 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     event.preventDefault();
     setMessage("");
     setMessageTone("error");
+    if (isSignup && signupStage === "details") {
+      const normalized = username.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      if (!/^[a-z0-9-]{3,32}$/.test(normalized)) return setMessage("Use a name with at least 3 letters or numbers.");
+      const issue = passwordIssue(password);
+      if (issue) return setMessage(issue);
+      if (password !== passwordConfirmation) return setMessage("The passwords do not match.");
+      setSignupStage("email");
+      return;
+    }
     const supabase = getBrowserSupabase();
     if (!supabase)
       return setMessage("Add the Supabase publishable key to enable sign-in.");
@@ -278,7 +289,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             )}
             <button
               disabled={busy || unavailable}
-              className="mt-6 w-full rounded-xl bg-[#315443] py-3 text-sm font-medium text-white transition hover:bg-[#243f32] disabled:opacity-50"
+              className="auth-primary-action mt-6 w-full rounded-xl bg-[#315443] py-3 text-sm font-medium text-white transition hover:bg-[#243f32] disabled:opacity-50"
             >
               {busy ? pendingAction : "Confirm account"}
             </button>
@@ -325,14 +336,18 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             {isRecovery
               ? "Secure your account"
               : isSignup
-                ? "Create your account"
+                ? collectingSignupEmail
+                  ? "Verify your email"
+                  : "Create your account"
                 : "Welcome back"}
           </p>
           <h2 className="mt-2 text-3xl font-medium tracking-[-.05em]">
             {isRecovery
               ? "Choose a new password."
               : isSignup
-                ? "Begin with your name."
+                ? collectingSignupEmail
+                  ? "Where should we send your code?"
+                  : "Begin with your name."
                 : "Return to your Scapes."}
           </h2>
           {resetComplete && (
@@ -340,7 +355,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               Password updated. Sign in with your new password.
             </p>
           )}
-          {!isRecovery && isSignup && (
+          {!isRecovery && isSignup && !collectingSignupEmail && (
             <label className="mt-7 block text-sm font-medium">
               Username
               <input
@@ -352,7 +367,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               />
             </label>
           )}
-          {!isRecovery && (
+          {!isRecovery && (!isSignup || collectingSignupEmail) && (
             <label className="mt-5 block text-sm font-medium">
               {isSignup ? "Email" : "Username or email"}
               <input
@@ -369,13 +384,13 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               />
             </label>
           )}
-          <div className="mt-5">
+          {(!isSignup || !collectingSignupEmail) && <div className="mt-5">
             <label className="block text-sm font-medium">
               <span>{isRecovery ? "New password" : "Password"}</span>
               <span className="relative mt-2 block">
                 <input
                   required
-                  minLength={isSignup || isRecovery ? 10 : 6}
+                  minLength={isSignup || isRecovery ? 5 : 6}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   type={showPassword ? "text" : "password"}
@@ -413,16 +428,30 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             {(isSignup || isRecovery) && (
               <label className="mt-4 block text-sm font-medium">
                 Confirm password
-                <input
-                  required
-                  minLength={10}
-                  value={passwordConfirmation}
-                  onChange={(event) => setPasswordConfirmation(event.target.value)}
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="new-password"
-                  className="mt-2 w-full rounded-xl border px-4 py-3 outline-none"
-                />
-                <span className="mt-2 block text-xs font-normal text-[#718077]">Use 10 or more characters, including a letter and a number.</span>
+                <span className="relative mt-2 block">
+                  <input
+                    required
+                    minLength={5}
+                    value={passwordConfirmation}
+                    onChange={(event) => setPasswordConfirmation(event.target.value)}
+                    type={showPasswordConfirmation ? "text" : "password"}
+                    autoComplete="new-password"
+                    className="w-full rounded-xl border px-4 py-3 pr-12 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordConfirmation((visible) => !visible)}
+                    className="absolute inset-y-0 right-0 grid w-12 place-items-center text-[#718077] transition hover:text-[#315443]"
+                    aria-label={showPasswordConfirmation ? "Hide confirmation password" : "Show confirmation password"}
+                    aria-pressed={showPasswordConfirmation}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8" aria-hidden="true">
+                      <path d="M2.5 12s3.4-5.5 9.5-5.5S21.5 12 21.5 12 18.1 17.5 12 17.5 2.5 12 2.5 12Z" />
+                      {showPasswordConfirmation ? <circle cx="12" cy="12" r="2.5" /> : <><path d="m4 4 16 16" /><path d="M9.9 6.8A8.9 8.9 0 0 1 12 6.5c6.1 0 9.5 5.5 9.5 5.5a18.4 18.4 0 0 1-3.2 3.6M6.3 8.2A18.3 18.3 0 0 0 2.5 12s3.4 5.5 9.5 5.5c.8 0 1.6-.1 2.3-.3" /></>}
+                    </svg>
+                  </button>
+                </span>
+                <span className="mt-2 block text-xs font-normal text-[#718077]">Use 5 or more characters.</span>
               </label>
             )}
             {!isSignup && !isRecovery && (
@@ -435,7 +464,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                 Forgot password?
               </button>
             )}
-          </div>
+          </div>}
           {message && (
             <p
               role="status"
@@ -447,17 +476,24 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
           )}
           <button
             disabled={busy || unavailable}
-            className="mt-6 w-full rounded-xl bg-[#315443] py-3 text-sm font-medium text-white transition hover:bg-[#243f32] disabled:opacity-50"
+            className="auth-primary-action mt-6 w-full rounded-xl bg-[#315443] py-3 text-sm font-medium text-white transition hover:bg-[#243f32] disabled:opacity-50"
           >
             {busy
               ? pendingAction
               : isRecovery
                 ? "Update password"
-                : isSignup
-                  ? "Create account"
+              : isSignup
+                  ? collectingSignupEmail
+                    ? "Send verification code"
+                    : "Continue"
                   : "Sign in"}
           </button>
-          {!isRecovery && (
+          {collectingSignupEmail && (
+            <button type="button" onClick={() => setSignupStage("details")} className="auth-inline-link mx-auto mt-4 block text-sm text-[#718077] hover:text-[#315443]">
+              Back to account details
+            </button>
+          )}
+          {!isRecovery && (!isSignup || !collectingSignupEmail) && (
             <>
               <div className="my-5 flex items-center gap-3 text-xs text-[#8b968e]">
                 <span className="h-px flex-1 bg-[#e5e8e2]" />
@@ -481,7 +517,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                 ? "Already have an account?"
                 : "New to DeepScapes?"}{" "}
             <Link
-              className="font-medium text-[#315443]"
+              className="auth-inline-link font-medium text-[#315443]"
               href={isRecovery || isSignup ? "/login" : "/signup"}
             >
               {isRecovery || isSignup ? "Sign in" : "Create account"}
