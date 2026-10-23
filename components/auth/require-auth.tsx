@@ -15,7 +15,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }, [loading, pathname, router, user]);
 
   if (loading || !user || !profileReady) {
-    return <PageLoader />;
+    return <PageLoader title={loading || !user ? "Preparing your account…" : "Setting up your workspace…"} description={loading || !user ? "Checking your secure session." : "Bringing your Scapes together."} />;
   }
 
   return <>{children}</>;
