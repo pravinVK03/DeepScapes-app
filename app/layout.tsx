@@ -10,7 +10,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try { const saved = localStorage.getItem("deepscapes-theme"); const dark = saved === "dark" || (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches); document.documentElement.classList.toggle("dark", dark); } catch {}`,
+          }}
+        />
+      </head>
       <body>
         <AuthProvider>{children}</AuthProvider>
         <Analytics />
