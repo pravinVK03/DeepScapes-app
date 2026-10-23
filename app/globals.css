@@ -187,13 +187,13 @@ html.dark .feedback-star[data-active="true"] svg {
 .feedback-submit { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
 .feedback-submit:hover:not(:disabled) { background: #1e40af; border-color: #93c5fd; color: #fff; transform: translateY(-2px); box-shadow: 0 10px 28px rgb(30 64 175 / .35); }
 .feedback-submit:focus-visible { outline: 2px solid #d4af37; outline-offset: 3px; }
+.auth-primary-action, .google-auth-button { align-items: center; display: inline-flex; justify-content: center; }
 .auth-primary-action:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 26px rgb(29 78 216 / .24); }
 .auth-primary-action:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 3px; }
 .auth-inline-link { text-decoration-line: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: color .18s ease, text-decoration-color .18s ease; }
 .auth-inline-link:hover { text-decoration-color: currentColor; }
-.auth-route-link { align-items: center; display: inline-flex; gap: .2rem; }
-.auth-route-arrow { display: inline-block; margin-right: -.65rem; opacity: 0; transform: translateX(-.42rem); transition: margin .22s ease, opacity .22s ease, transform .22s ease; }
-.auth-route-link:hover .auth-route-arrow, .auth-route-link:focus-visible .auth-route-arrow { margin-right: 0; opacity: 1; transform: translateX(0); }
+.auth-action-arrow { display: inline-block; margin-right: -.75rem; opacity: 0; transform: translateX(-.45rem); transition: margin .24s ease, opacity .24s ease, transform .24s ease; }
+.auth-primary-action:hover:not(:disabled) .auth-action-arrow, .auth-primary-action:focus-visible .auth-action-arrow, .google-auth-button:hover:not(:disabled) .auth-action-arrow, .google-auth-button:focus-visible .auth-action-arrow { margin-right: 0; opacity: 1; transform: translateX(.1rem); }
 html.dark .auth-primary-action:hover:not(:disabled) { box-shadow: 0 12px 26px rgb(255 255 255 / .12); }
 @keyframes auth-step-in { from { opacity: .55; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .auth-flow-card { animation: auth-step-in .24s ease-out both; }

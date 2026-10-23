@@ -560,7 +560,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
             disabled={busy || unavailable}
             className="auth-primary-action mt-6 w-full rounded-xl bg-[#315443] py-3 text-sm font-medium text-white transition hover:bg-[#243f32] disabled:opacity-50"
           >
-            {busy
+            <span>{busy
               ? pendingAction
               : isRecovery
                 ? "Update password"
@@ -568,7 +568,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                   ? collectingSignupVerification
                     ? verifyingEmail ? "Confirm account" : "Send verification code"
                     : signupStage === "profile" ? "Create account" : "Continue"
-                  : "Sign in"}
+                  : "Sign in"}</span><span className="auth-action-arrow" aria-hidden="true">→</span>
           </button>
           {isSignup && signupStage === "profile" && (
             <button type="button" onClick={() => void skipProfile()} disabled={busy || unavailable} className="auth-inline-link mx-auto mt-4 block text-sm text-[#718077] hover:text-[#315443] disabled:opacity-50">
@@ -593,7 +593,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                 disabled={unavailable}
                 className="google-auth-button w-full rounded-xl border border-[#dce1d9] bg-white py-3 text-sm font-medium text-[#17231d] transition hover:-translate-y-0.5 hover:border-[#315443] hover:bg-[#edf0df] hover:shadow-sm disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Continue with Google
+                <span>Continue with Google</span><span className="auth-action-arrow" aria-hidden="true">→</span>
               </button>
             </>
           )}
@@ -604,10 +604,10 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                 ? "Already have an account?"
                 : "New to DeepScapes?"}{" "}
             <Link
-              className="auth-inline-link auth-route-link font-medium text-[#315443]"
+              className="auth-inline-link font-medium text-[#315443]"
               href={isRecovery || isSignup ? "/login" : "/signup"}
             >
-              <span>{isRecovery || isSignup ? "Sign in" : "Create account"}</span><span className="auth-route-arrow" aria-hidden="true">→</span>
+              {isRecovery || isSignup ? "Sign in" : "Create account"}
             </Link>
           </p>
         </form>
