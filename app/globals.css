@@ -22,11 +22,18 @@ html.dark input:focus, html.dark textarea:focus, html.dark select:focus { outlin
 .rise { animation: rise .45s ease-out both; }
 .scape-card-cover { background: var(--scape-cover); background-position: center; background-size: cover; }
 .scape-thumbnail-preview { background: var(--scape-cover); background-position: center; background-size: cover; }
-@keyframes loading-sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@keyframes loading-sweep { 0% { transform: translateX(-120%); } 48% { transform: translateX(215%); } 100% { transform: translateX(215%); } }
+@keyframes loader-mark-float { 0%, 100% { transform: translateY(0); opacity: .86; } 50% { transform: translateY(-5px); opacity: 1; } }
+@keyframes loader-route { 0%, 100% { transform: translateX(-2px); opacity: .35; } 50% { transform: translateX(2px); opacity: 1; } }
 .page-loader { background: var(--paper); }
+.page-loader-mark { animation: loader-mark-float 2.8s ease-in-out infinite; }
 .page-loader-logo { opacity: .86; }
+.page-loader-transition { display: flex; align-items: center; justify-content: center; gap: .7rem; color: #718077; font-size: .69rem; letter-spacing: .08em; text-transform: uppercase; }
+.page-loader-transition span { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-loader-transition i { position: relative; display: block; width: 1.8rem; height: 1px; background: currentColor; animation: loader-route 1.65s ease-in-out infinite; }
+.page-loader-transition i::after { position: absolute; right: 0; top: -3px; width: 6px; height: 6px; border-right: 1px solid currentColor; border-top: 1px solid currentColor; content: ""; transform: rotate(45deg); }
 .page-loader-line { background: #dbeafe; }
-.page-loader-line span { width: 32%; background: #1d4ed8; animation: loading-sweep 1.35s cubic-bezier(.45, 0, .55, 1) infinite; }
+.page-loader-line span { width: 32%; background: #1d4ed8; animation: loading-sweep 1.8s cubic-bezier(.33, 0, .18, 1) infinite; }
 .logo-dark { display: none; }
 html.dark { --ink: #f5f5f5; --muted: #a3a3a3; --paper: #0d0d0d; --line: #373737; --moss: #f5f5f5; --cream: #242424; background: #0d0d0d; color-scheme: dark; }
 html.dark body, html.dark main { background: #0d0d0d !important; color: #f5f5f5; }
@@ -184,8 +191,9 @@ html.dark .feedback-star[data-active="true"] svg {
 .auth-primary-action:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 3px; }
 .auth-inline-link { text-decoration-line: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: color .18s ease, text-decoration-color .18s ease; }
 .auth-inline-link:hover { text-decoration-color: currentColor; }
-.auth-route-link::after { content: " →"; display: inline-block; opacity: 0; transform: translateX(-5px); transition: opacity .18s ease, transform .18s ease; }
-.auth-route-link:hover::after { opacity: 1; transform: translateX(0); }
+.auth-route-link { align-items: center; display: inline-flex; gap: .2rem; }
+.auth-route-arrow { display: inline-block; margin-right: -.65rem; opacity: 0; transform: translateX(-.42rem); transition: margin .22s ease, opacity .22s ease, transform .22s ease; }
+.auth-route-link:hover .auth-route-arrow, .auth-route-link:focus-visible .auth-route-arrow { margin-right: 0; opacity: 1; transform: translateX(0); }
 html.dark .auth-primary-action:hover:not(:disabled) { box-shadow: 0 12px 26px rgb(255 255 255 / .12); }
 @keyframes auth-step-in { from { opacity: .55; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .auth-flow-card { animation: auth-step-in .24s ease-out both; }

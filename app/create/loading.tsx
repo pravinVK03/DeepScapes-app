@@ -1,5 +1,5 @@
 import { PageLoader } from "@/components/ui/page-loader";
 
 export default function Loading() {
-  return <PageLoader title="Preparing a new Scape…" description="Setting up a space to begin." />;
+  return <PageLoader title="Opening a fresh Scape…" description="Setting the stage for your next idea." previous="Your workspace" next="New Scape" />;
 }

@@ -70,14 +70,17 @@ function FeedbackForm() {
 export default function HomeScreen() {
   const scapes = useScapes(); const { user, profileReady } = useAuth(); const [query, setQuery] = useState(""); const [loadingScapes, setLoadingScapes] = useState(true); const loadedUser = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!user || !profileReady) { loadedUser.current = undefined; setLoadingScapes(true); return; }
+    if (!user || !profileReady) { loadedUser.current = undefined; return; }
+    if (loadedUser.current === user.id) return;
+    let settled = false;
+    const loadingFrame = window.requestAnimationFrame(() => { if (!settled) setLoadingScapes(true); });
     if (loadedUser.current !== user.id) { loadedUser.current = user.id; saveScapes([]); }
-    setLoadingScapes(true);
     void loadRemoteScapes({ force: true }).then((remoteScapes) => {
       // Do not replace a user's local view with an empty list after an
       // intermittent network or server failure.
       if (remoteScapes) saveScapes(remoteScapes);
-    }).finally(() => setLoadingScapes(false));
+    }).finally(() => { settled = true; setLoadingScapes(false); });
+    return () => window.cancelAnimationFrame(loadingFrame);
   }, [profileReady, user]);
   const { personalScape, recentScapes } = useMemo(() => {
     const personal = scapes.find((scape) => scape.id === `scape-${user?.id}`);
@@ -85,7 +88,7 @@ export default function HomeScreen() {
     return { personalScape: personal, recentScapes: recent.filter((scape) => scape.title.toLowerCase().includes(query.toLowerCase())) };
   }, [query, scapes, user?.id]);
 
-  if (!profileReady || loadingScapes) return <PageLoader title="Setting up your workspace…" description="Bringing your Scapes together." />;
+  if (!user || !profileReady || loadingScapes) return <PageLoader title="Restoring your Scapes…" description="Bringing back the spaces you last worked in." previous="Account ready" next="Your workspace" />;
 
   return <main className="min-h-screen"><AppHeader />
     <section className="mx-auto max-w-7xl px-5 pb-8 pt-9 sm:px-8 sm:pt-12"><p className="mb-4 text-sm font-medium uppercase tracking-[.18em] text-[#718077]">Your workspace</p><div className="max-w-3xl"><h1 className="text-5xl font-medium tracking-[-.065em] text-[#17231d] sm:text-7xl">Everything in<br /><em className="font-serif font-normal">one space.</em></h1><p className="mt-5 max-w-lg text-base leading-7 text-[#718077]">Keep project notes, tasks, documents, media, and references together.</p></div><div className="mt-8 flex max-w-xl items-center gap-3 rounded-2xl border border-[#e5e8e2] bg-white px-4 py-3 shadow-sm"><Icon name="search" className="h-5 w-5 text-[#718077]" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Scapes" className="w-full border-0 bg-transparent text-sm outline-none placeholder:text-[#a0aaa3]" /></div></section>

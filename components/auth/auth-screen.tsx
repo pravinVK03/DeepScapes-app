@@ -382,7 +382,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                   : signupStage === "email"
                     ? "Create your account"
                     : "Make your profile yours"
-                : "Welcome back"}
+                : "Welcome back,"}
           </p>
           <h2 className="mt-2 text-3xl font-medium tracking-[-.05em]">
             {isRecovery
@@ -607,7 +607,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
               className="auth-inline-link auth-route-link font-medium text-[#315443]"
               href={isRecovery || isSignup ? "/login" : "/signup"}
             >
-              {isRecovery || isSignup ? "Sign in" : "Create account"}
+              <span>{isRecovery || isSignup ? "Sign in" : "Create account"}</span><span className="auth-route-arrow" aria-hidden="true">→</span>
             </Link>
           </p>
         </form>
