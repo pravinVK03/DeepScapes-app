@@ -67,20 +67,19 @@ function FeedbackForm() {
 }
 
 export default function HomeScreen() {
-  const scapes = useScapes(); const { user, profileReady } = useAuth(); const [query, setQuery] = useState(""); const [loadingScapes, setLoadingScapes] = useState(true); const loadedUser = useRef<string | undefined>(undefined);
+  const scapes = useScapes(); const { user } = useAuth(); const [query, setQuery] = useState(""); const loadedUser = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!user || !profileReady) { loadedUser.current = undefined; return; }
+    if (!user) { loadedUser.current = undefined; return; }
     if (loadedUser.current === user.id) return;
-    let settled = false;
-    const loadingFrame = window.requestAnimationFrame(() => { if (!settled) setLoadingScapes(true); });
-    if (loadedUser.current !== user.id) { loadedUser.current = user.id; saveScapes([]); }
-    void loadRemoteScapes({ force: true }).then((remoteScapes) => {
+    loadedUser.current = user.id;
+    // Render the cached workspace immediately, then reconcile it quietly.
+    // Clearing the cache here caused the empty loading panels on every revisit.
+    void loadRemoteScapes().then((remoteScapes) => {
       // Do not replace a user's local view with an empty list after an
       // intermittent network or server failure.
       if (remoteScapes) saveScapes(remoteScapes);
-    }).finally(() => { settled = true; setLoadingScapes(false); });
-    return () => window.cancelAnimationFrame(loadingFrame);
-  }, [profileReady, user]);
+    });
+  }, [user]);
   const { personalScape, recentScapes } = useMemo(() => {
     const personal = scapes.find((scape) => scape.id === `scape-${user?.id}`);
     const recent = scapes.filter((scape) => scape.id !== personal?.id);
@@ -89,11 +88,11 @@ export default function HomeScreen() {
 
   // Keep the workspace visible during a refresh. A full-screen loading state
   // here made normal navigation feel like the app had stopped responding.
-  if (!user || !profileReady) return null;
+  if (!user) return null;
 
   return <main className="min-h-screen"><AppHeader />
     <section className="mx-auto max-w-7xl px-5 pb-8 pt-9 sm:px-8 sm:pt-12"><p className="mb-4 text-sm font-medium uppercase tracking-[.18em] text-[#718077]">Your workspace</p><div className="max-w-3xl"><h1 className="text-5xl font-medium tracking-[-.065em] text-[#17231d] sm:text-7xl">Everything in<br /><em className="font-serif font-normal">one space.</em></h1><p className="mt-5 max-w-lg text-base leading-7 text-[#718077]">Keep project notes, tasks, documents, media, and references together.</p></div><div className="mt-8 flex max-w-xl items-center gap-3 rounded-2xl border border-[#e5e8e2] bg-white px-4 py-3 shadow-sm"><Icon name="search" className="h-5 w-5 text-[#718077]" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Scapes" className="w-full border-0 bg-transparent text-sm outline-none placeholder:text-[#a0aaa3]" /></div></section>
-    <section className="mx-auto max-w-7xl space-y-8 px-5 pb-16 sm:px-8"><div className="border-b border-[#e5e8e2] pb-8"><div className="mb-5"><h2 className="text-xl font-semibold tracking-[-.04em]">Your Scape</h2></div>{personalScape ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><ScapeCard scape={personalScape} index={0} /></div> : loadingScapes ? <div aria-busy="true" className="rounded-2xl border border-dashed border-[#cbd3ca] p-6 text-sm text-[#718077]">Your Scape is being brought into view.</div> : <div className="rounded-2xl border border-dashed border-[#cbd3ca] p-6 text-sm text-[#718077]">Create your first Scape to begin.</div>}</div><div><div className="mb-5 flex items-end justify-between"><h2 className="text-xl font-semibold tracking-[-.04em]">Recent Scapes</h2><Link href="/templates" className="hidden text-sm font-medium text-[#315443] sm:block">Browse templates →</Link></div>{recentScapes.length ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{recentScapes.map((scape, index) => <ScapeCard scape={scape} index={index} key={scape.id} />)}<Link href="/create" className="new-scape-card grid min-h-[240px] place-items-center rounded-2xl border border-dashed border-[#cbd3ca] bg-[#f2f4ed] p-6 transition"><div className="text-center"><span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white text-[#315443] shadow-sm"><Icon name="plus" className="h-5 w-5" /></span><p className="mt-3 text-sm font-medium">Start a new Scape</p><p className="mt-1 text-xs text-[#718077]">Blank or template-based</p></div></Link></div> : loadingScapes ? <div aria-busy="true" className="rounded-2xl border border-dashed border-[#cbd3ca] bg-[#f2f4ed] p-6 text-sm text-[#718077]">Refreshing your latest Scapes…</div> : <div className="rounded-2xl border border-dashed border-[#cbd3ca] bg-[#f2f4ed] p-6"><p className="font-medium">No recent Scapes yet</p><Link href="/create" className="mt-4 inline-flex rounded-lg bg-[#315443] px-4 py-2 text-sm font-medium text-white">Create Scape</Link></div>}</div></section>
+    <section className="mx-auto max-w-7xl space-y-8 px-5 pb-16 sm:px-8"><div className="border-b border-[#e5e8e2] pb-8"><div className="mb-5"><h2 className="text-xl font-semibold tracking-[-.04em]">Your Scape</h2></div>{personalScape ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><ScapeCard scape={personalScape} index={0} /></div> : <div className="rounded-2xl border border-dashed border-[#cbd3ca] p-6 text-sm text-[#718077]">Create your first Scape to begin.</div>}</div><div><div className="mb-5 flex items-end justify-between"><h2 className="text-xl font-semibold tracking-[-.04em]">Recent Scapes</h2><Link href="/templates" className="hidden text-sm font-medium text-[#315443] sm:block">Browse templates →</Link></div>{recentScapes.length ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{recentScapes.map((scape, index) => <ScapeCard scape={scape} index={index} key={scape.id} />)}<Link href="/create" className="new-scape-card grid min-h-[240px] place-items-center rounded-2xl border border-dashed border-[#cbd3ca] bg-[#f2f4ed] p-6 transition"><div className="text-center"><span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white text-[#315443] shadow-sm"><Icon name="plus" className="h-5 w-5" /></span><p className="mt-3 text-sm font-medium">Start a new Scape</p><p className="mt-1 text-xs text-[#718077]">Blank or template-based</p></div></Link></div> : <div className="rounded-2xl border border-dashed border-[#cbd3ca] bg-[#f2f4ed] p-6"><p className="font-medium">No recent Scapes yet</p><Link href="/create" className="mt-4 inline-flex rounded-lg bg-[#315443] px-4 py-2 text-sm font-medium text-white">Create Scape</Link></div>}</div></section>
     <FeedbackForm />
   </main>;
 }

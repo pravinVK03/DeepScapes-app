@@ -32,22 +32,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(() => Boolean(getBrowserSupabase()));
   const [profileReady, setProfileReady] = useState(false);
   const requestVersion = useRef(0);
+  const activeUserId = useRef<string | undefined>(undefined);
   useEffect(() => {
     const supabase = getBrowserSupabase();
     if (!supabase) return;
     const applySession = (next: Session | null) => {
       const version = ++requestVersion.current;
+      const nextUserId = next?.user.id;
+      const isSameUser = activeUserId.current === nextUserId;
+      activeUserId.current = nextUserId;
       setSession(next);
       setLoading(false);
       setProfileReady(!next);
       if (!next) return;
-      void initialize(next).then(() => { if (version === requestVersion.current) setProfileReady(true); });
+      // Token refreshes and returning to a browser tab are not a new sign-in.
+      // Keep the current view usable and initialize only once per browser session.
+      const readyKey = `deepscapes-profile-ready:${next.user.id}`;
+      const alreadyReady = isSameUser || window.sessionStorage.getItem(readyKey) === "true";
+      if (alreadyReady) { setProfileReady(true); return; }
+      void initialize(next).then((ready) => {
+        if (ready) window.sessionStorage.setItem(readyKey, "true");
+        if (version === requestVersion.current) setProfileReady(true);
+      });
     };
     void supabase.auth.getSession().then(({ data }) => applySession(data.session)).catch(() => { setLoading(false); setProfileReady(true); });
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => applySession(next));
     return () => subscription.subscription.unsubscribe();
   }, []);
-  const value = useMemo<AuthValue>(() => ({ user: session?.user ?? null, loading, profileReady, signOut: async () => { requestVersion.current += 1; setSession(null); setProfileReady(true); await getBrowserSupabase()?.auth.signOut(); } }), [session, loading, profileReady]);
+  const value = useMemo<AuthValue>(() => ({ user: session?.user ?? null, loading, profileReady, signOut: async () => { requestVersion.current += 1; activeUserId.current = undefined; setSession(null); setProfileReady(true); await getBrowserSupabase()?.auth.signOut(); } }), [session, loading, profileReady]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
