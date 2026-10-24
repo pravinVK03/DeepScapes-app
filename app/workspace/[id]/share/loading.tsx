@@ -1,5 +1,5 @@
-import { PageLoader } from "@/components/ui/page-loader";
+import { NavigationProgress } from "@/components/ui/navigation-progress";
 
 export default function Loading() {
-  return <PageLoader title="Preparing collaboration…" description="Getting sharing details ready for your Scape." previous="Your Scape" next="Share" />;
+  return <NavigationProgress />;
 }

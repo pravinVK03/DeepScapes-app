@@ -1,5 +1,5 @@
-import { PageLoader } from "@/components/ui/page-loader";
+import { NavigationProgress } from "@/components/ui/navigation-progress";
 
 export default function Loading() {
-  return <PageLoader title="Starting your sign-up…" description="Preparing the first step toward your Scapes." previous="Welcome" next="Your account" />;
+  return <NavigationProgress />;
 }

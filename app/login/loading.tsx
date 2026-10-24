@@ -1,5 +1,5 @@
-import { PageLoader } from "@/components/ui/page-loader";
+import { NavigationProgress } from "@/components/ui/navigation-progress";
 
 export default function Loading() {
-  return <PageLoader title="Getting sign-in ready…" description="Preparing a secure way back to your Scapes." previous="Welcome" next="Sign in" />;
+  return <NavigationProgress />;
 }

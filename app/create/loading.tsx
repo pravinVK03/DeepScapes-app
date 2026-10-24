@@ -1,5 +1,5 @@
-import { PageLoader } from "@/components/ui/page-loader";
+import { NavigationProgress } from "@/components/ui/navigation-progress";
 
 export default function Loading() {
-  return <PageLoader title="Opening a fresh Scape…" description="Setting the stage for your next idea." previous="Your workspace" next="New Scape" />;
+  return <NavigationProgress />;
 }
