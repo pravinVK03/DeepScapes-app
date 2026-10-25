@@ -1,5 +1,5 @@
-import { NavigationProgress } from "@/components/ui/navigation-progress";
+import { DeferredPageLoader } from "@/components/ui/deferred-page-loader";
 
 export default function Loading() {
-  return <NavigationProgress />;
+  return <DeferredPageLoader title="Opening your resource…" description="" />;
 }
