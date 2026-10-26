@@ -47,7 +47,10 @@ export function addScape(next: Scape) {
   saveScapes([stamped, ...getScapes()]);
   return persistScape(stamped);
 }
-export function newId(prefix: string) { return `${prefix}-${globalThis.crypto.randomUUID()}`; }
+export function newId(prefix: string) {
+  const random = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${random}`;
+}
 export async function persistScape(scape: Scape) {
   const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
   const response = await fetch("/api/scapes", {

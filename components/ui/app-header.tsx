@@ -95,7 +95,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
           {user && pathname.match(/^\/workspace\/[^/]+$/) && <Link href={`${pathname}/share`} className="hidden rounded-lg border border-[#dce1d9] px-3 py-2 text-sm sm:inline-flex">Share</Link>}
           {user ? <div ref={profileRef} className="relative">
             <button onClick={() => { setCanConnectGmail(false); setProfileOpen((open) => !open); }} className="profile-trigger flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition" aria-expanded={profileOpen} aria-label="Open profile menu">
-              <span className="profile-avatar grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#315443] text-xs font-semibold text-white">{avatarImage ? <img src={avatar} alt="" className="h-full w-full object-cover" /> : avatar || displayName?.slice(0, 1).toUpperCase()}</span>
+              <span className="profile-avatar grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#315443] text-xs font-semibold text-white">{avatarImage ? <Image src={avatar} alt="" width={24} height={24} unoptimized className="h-full w-full object-cover" /> : avatar || displayName?.slice(0, 1).toUpperCase()}</span>
               <span className="hidden max-w-28 truncate sm:inline">{displayName}</span>
             </button>
             {profileOpen && <div className="profile-menu absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-[#dce1d9] bg-white p-1 shadow-xl">

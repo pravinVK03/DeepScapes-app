@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "./auth-provider";
 
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, loading, profileReady } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
