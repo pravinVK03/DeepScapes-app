@@ -218,5 +218,13 @@ on conflict do nothing;
 alter table public.scapes enable row level security;
 alter table public.templates enable row level security;
 alter table public.profiles enable row level security;
+alter table public.scape_collaborators enable row level security;
+alter table public.scape_resources enable row level security;
+alter table public.scape_activity enable row level security;
+alter table public.scape_browser_state enable row level security;
+alter table public.scape_browser_sessions enable row level security;
+alter table public.scape_browser_events enable row level security;
 
--- No browser client accesses these tables. The server-only service role bypasses RLS.
+-- No browser client accesses these tables directly. The server-only service
+-- role bypasses RLS; keep policies closed until a deliberate direct-client API
+-- is introduced.
