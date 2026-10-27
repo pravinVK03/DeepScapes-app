@@ -62,7 +62,7 @@ create table if not exists public.scape_collaborators (
 );
 
 create table if not exists public.scape_resources (
-  id text primary key,
+  id text not null,
   scape_id text not null references public.scapes(id) on delete cascade,
   type text not null check (type in ('note', 'task', 'file', 'image', 'video', 'audio', 'link')),
   title text not null,
@@ -75,18 +75,20 @@ create table if not exists public.scape_resources (
   download_url text,
   mime_type text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  primary key (scape_id, id)
 );
 
 create table if not exists public.scape_activity (
-  id text primary key,
+  id text not null,
   scape_id text not null references public.scapes(id) on delete cascade,
   action text not null,
   detail text not null default '',
   occurred_at timestamptz not null default now(),
   actor_id uuid references auth.users(id) on delete set null,
   actor_name text,
-  actor_email text
+  actor_email text,
+  primary key (scape_id, id)
 );
 
 create table if not exists public.scape_browser_state (
@@ -112,15 +114,25 @@ create table if not exists public.scape_browser_sessions (
 );
 
 create table if not exists public.scape_browser_events (
-  id text primary key,
+  id text not null,
   scape_id text not null references public.scapes(id) on delete cascade,
   session_id text,
   type text not null,
   occurred_at timestamptz not null default now(),
   url text,
   target text,
-  detail text
+  detail text,
+  primary key (scape_id, id)
 );
+
+-- The original JSON model allowed identifiers such as "created" in every
+-- Scape. Scope imported identifiers to their parent before the backfill runs.
+alter table public.scape_resources drop constraint if exists scape_resources_pkey;
+alter table public.scape_resources add primary key (scape_id, id);
+alter table public.scape_activity drop constraint if exists scape_activity_pkey;
+alter table public.scape_activity add primary key (scape_id, id);
+alter table public.scape_browser_events drop constraint if exists scape_browser_events_pkey;
+alter table public.scape_browser_events add primary key (scape_id, id);
 
 create index if not exists scapes_owner_updated_idx on public.scapes (owner_id, updated_at desc);
 create index if not exists scape_collaborators_user_idx on public.scape_collaborators (user_id, scape_id);
@@ -158,7 +170,7 @@ select
   coalesce((person->>'pending')::boolean, false)
 from public.scapes s
 cross join lateral jsonb_array_elements(coalesce(s.payload->'collaborators', '[]'::jsonb)) person
-on conflict (scape_id, collaborator_key) do update set user_id = excluded.user_id, email = excluded.email, name = excluded.name, permission = excluded.permission, pending = excluded.pending;
+on conflict (scape_id, collaborator_key) do nothing;
 
 insert into public.scape_resources (id, scape_id, type, title, detail, occurred_at, done, starred, group_name, content, download_url, mime_type)
 select
@@ -168,7 +180,7 @@ select
 from public.scapes s
 cross join lateral jsonb_array_elements(coalesce(s.payload->'resources', '[]'::jsonb)) item
 where coalesce(item->>'id', '') <> '' and item->>'type' in ('note', 'task', 'file', 'image', 'video', 'audio', 'link')
-on conflict (id) do update set title = excluded.title, detail = excluded.detail, done = excluded.done, starred = excluded.starred, group_name = excluded.group_name, content = excluded.content, download_url = excluded.download_url, mime_type = excluded.mime_type, updated_at = now();
+on conflict (scape_id, id) do update set title = excluded.title, detail = excluded.detail, done = excluded.done, starred = excluded.starred, group_name = excluded.group_name, content = excluded.content, download_url = excluded.download_url, mime_type = excluded.mime_type, updated_at = now();
 
 insert into public.scape_activity (id, scape_id, action, detail, occurred_at, actor_id, actor_name, actor_email)
 select
@@ -178,7 +190,7 @@ select
 from public.scapes s
 cross join lateral jsonb_array_elements(coalesce(s.payload->'activity', '[]'::jsonb)) item
 where coalesce(item->>'id', '') <> ''
-on conflict (id) do nothing;
+on conflict (scape_id, id) do nothing;
 
 -- Private Storage buckets. The server creates signed URLs; media paths rather
 -- than base64 bytes are stored in database records and Auth metadata.
