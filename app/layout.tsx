@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/auth-provider";
@@ -21,6 +22,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body>
         <AuthProvider>{children}</AuthProvider>
         <Analytics />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-FZZSFW8W4N');`}
+        </Script>
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-FZZSFW8W4N"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
