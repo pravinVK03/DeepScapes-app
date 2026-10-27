@@ -81,6 +81,8 @@ FEEDBACK_TO_EMAIL=your-feedback-inbox@gmail.com
 GMAIL_CLIENT_ID=your-google-oauth-client-id
 GMAIL_CLIENT_SECRET=your-google-oauth-client-secret
 GMAIL_TOKEN_ENCRYPTION_KEY=a-random-secret-with-at-least-32-characters
+UPSTASH_REDIS_REST_URL=https://your-database.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your-upstash-rest-token
 ```
 
 | Variable | Scope | Purpose |
@@ -95,6 +97,8 @@ GMAIL_TOKEN_ENCRYPTION_KEY=a-random-secret-with-at-least-32-characters
 | `GMAIL_CLIENT_ID` | Server only | Google OAuth web-client ID for the owner-controlled Gmail inbox. |
 | `GMAIL_CLIENT_SECRET` | Server only | Google OAuth web-client secret. Never expose it to the browser. |
 | `GMAIL_TOKEN_ENCRYPTION_KEY` | Server only | Random secret (32+ characters) used to encrypt the Gmail refresh token before it is stored privately in Supabase. |
+| `UPSTASH_REDIS_REST_URL` | Server only, optional | Enables shared rate limits across every Vercel instance. |
+| `UPSTASH_REDIS_REST_TOKEN` | Server only, optional | Credential for the shared rate-limit store. Never expose it to the browser. |
 
 Restart the development server after changing environment variables. Keep all server-only values out of Git and never use `NEXT_PUBLIC_` for secrets.
 
@@ -169,23 +173,25 @@ Current per-user or per-IP limits include:
 
 | Operation | Limit |
 | --- | --- |
-| Steel session starts | 6 per user per hour and 20 per user per day |
-| Steel navigation and checkpoints | 40 per user per hour |
-| Steel trace requests | 20 per user per minute |
-| Steel session closes | 12 per user per hour |
-| Upload preparation | 20 per user per hour |
-| Upload completion | 40 per user per hour |
-| Legacy direct uploads | 12 per user per hour |
-| Scape reads | 120 per user per hour |
-| Scape writes | 90 per user per hour |
+| Steel session starts | 4 per user per hour and 10 per user per day |
+| Steel navigation and checkpoints | 24 per user per hour |
+| Steel trace requests | 10 per user per minute |
+| Steel session closes | 8 per user per hour |
+| Upload preparation | 12 per user per hour |
+| Upload completion | 24 per user per hour |
+| Legacy direct uploads | 8 per user per hour |
+| Scape reads | 30 per user per hour |
+| Scape writes | 45 per user per hour |
 | Scape deletion | 10 per user per hour |
-| Login username lookup | 12 per IP per 15 minutes |
-| Authentication initialization | 12 per user per hour |
-| Template reads | 30 per IP per hour |
+| Login username lookup | 8 per IP per 15 minutes |
+| Authentication initialization | 6 per user per hour |
+| Template reads | 20 per IP per hour |
 
 Exceeded limits return HTTP `429` with a `Retry-After` header.
 
-The current limiter is an in-memory, per-server-instance safeguard with no additional infrastructure cost. For strict limits shared across every Vercel instance, replace the store in [`lib/rate-limit.ts`](./lib/rate-limit.ts) with a durable Redis/KV-backed limiter.
+Rate limits use the configured Upstash Redis REST credentials when present, so the limit is shared across every Vercel instance. Without those two variables, the application falls back to a local per-instance guard for development. Upstash's free tier is suitable for early production traffic; add the two variables to Vercel before inviting users.
+
+The dashboard now fetches compact Scape card metadata first and only downloads notes, resources, browser history, and activity when a Scape is opened. Browser sessions cache that dashboard result for five minutes. Covers are cropped to 640×360 and profile pictures to 192×192 before saving; this prevents oversized base64 image payloads from being sent with every database response. Resource uploads are limited to 20 MB in the API and storage bucket.
 
 ## Quality checks
 
@@ -216,6 +222,6 @@ Keep `.env.local`, Supabase service-role credentials, Steel API keys, Gmail OAut
 
 ## Operational notes
 
-- The in-memory rate limiter is a cost guard, not a distributed limiter. Use Redis or Vercel KV before operating at multi-instance scale.
+- Before inviting users, create a free Upstash Redis database and set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` in Vercel Production. Without it, limits are not globally durable across server instances.
 - Signed resource URLs are currently issued for long-lived access. Rotate or shorten them before introducing stricter revocation requirements.
 - Web Analytics is enabled globally through `@vercel/analytics`; use the Vercel Analytics dashboard to monitor visitor and page-view trends.

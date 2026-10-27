@@ -38,7 +38,7 @@ async function ensureBucket() {
   const supabase = getSupabase();
   const { error: existingError } = await supabase.storage.getBucket(bucket);
   if (!existingError) return undefined;
-  const { error: createError } = await supabase.storage.createBucket(bucket, { public: false });
+  const { error: createError } = await supabase.storage.createBucket(bucket, { public: false, fileSizeLimit: 20 * 1024 * 1024 });
   if (createError && !/already exists/i.test(createError.message)) return createError.message;
   return undefined;
 }
@@ -46,15 +46,16 @@ async function ensureBucket() {
 export async function POST(request: Request) {
   const isJson = request.headers.get("content-type")?.includes("application/json");
   if (isJson) {
-    const body = await request.json().catch(() => undefined) as { action?: "prepare" | "complete"; scapeId?: string; fileName?: string; mimeType?: string; path?: string } | undefined;
+    const body = await request.json().catch(() => undefined) as { action?: "prepare" | "complete"; scapeId?: string; fileName?: string; mimeType?: string; path?: string; size?: number } | undefined;
     if (!body) return Response.json({ error: "Invalid upload request" }, { status: 400 });
     const access = await getEditableScape(request, body.scapeId ?? "");
     if ("error" in access) return Response.json({ error: access.error }, { status: access.status });
-    const quota = rateLimit(request, body.action === "prepare" ? "upload-prepare" : "upload-complete", body.action === "prepare" ? 20 : 40, 60 * 60 * 1000, access.user.id);
+    const quota = await rateLimit(request, body.action === "prepare" ? "upload-prepare" : "upload-complete", body.action === "prepare" ? 12 : 24, 60 * 60 * 1000, access.user.id);
     if (!quota.allowed) return rateLimited(quota.retryAfter);
     const bucketError = await ensureBucket();
     if (bucketError) return Response.json({ error: `Storage setup failed: ${bucketError}` }, { status: 500 });
     if (body.action === "prepare") {
+      if (!Number.isSafeInteger(body.size) || body.size! <= 0 || body.size! > 20 * 1024 * 1024) return Response.json({ error: "Files must be smaller than 20 MB." }, { status: 413 });
       const path = `${access.user.id}/${access.scape.id}/${crypto.randomUUID()}-${safeFileName(body.fileName ?? "upload")}`;
       const { data, error } = await access.supabase.storage.from(bucket).createSignedUploadUrl(path);
       if (error || !data?.token) return Response.json({ error: error?.message ?? "Could not prepare the upload" }, { status: 500 });
@@ -77,8 +78,9 @@ export async function POST(request: Request) {
   if (!(file instanceof File)) return Response.json({ error: "A file is required" }, { status: 400 });
   const access = await getEditableScape(request, scapeId);
   if ("error" in access) return Response.json({ error: access.error }, { status: access.status });
-  const quota = rateLimit(request, "upload-legacy", 12, 60 * 60 * 1000, access.user.id);
+  const quota = await rateLimit(request, "upload-legacy", 8, 60 * 60 * 1000, access.user.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
+  if (file.size > 20 * 1024 * 1024) return Response.json({ error: "Files must be smaller than 20 MB." }, { status: 413 });
   const bucketError = await ensureBucket();
   if (bucketError) return Response.json({ error: `Storage setup failed: ${bucketError}` }, { status: 500 });
   const path = `${access.user.id}/${access.scape.id}/${crypto.randomUUID()}-${safeFileName(file.name)}`;

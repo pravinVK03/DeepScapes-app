@@ -5,7 +5,7 @@ import { rateLimit, rateLimited } from "@/lib/rate-limit";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const quota = rateLimit(request, "templates", 30, 60 * 60 * 1000);
+  const quota = await rateLimit(request, "templates", 20, 60 * 60 * 1000);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!databaseEnabled) return Response.json({ templates, connected: false });
   const supabase = getSupabase();

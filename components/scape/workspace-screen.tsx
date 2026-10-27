@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/ui/app-header";
 import { Icon } from "@/components/ui/icons";
 import { BrowserActivity, BrowserSessionSnapshot, BrowserState, Resource, ResourceType, Scape } from "@/lib/mock-data";
-import { deleteScape, getScape, newId, saveScape, useScape } from "@/lib/scape-store";
+import { deleteScape, getScape, loadRemoteScape, newId, saveScape, useScape } from "@/lib/scape-store";
 import { useAuth } from "@/components/auth/auth-provider";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { ShareScape } from "@/components/scape/share-scape";
@@ -73,6 +73,10 @@ export default function WorkspaceScreen() {
   const [adding, setAdding] = useState<ResourceType | null>(null); const [editing, setEditing] = useState(false); const [focused, setFocused] = useState<ResourceType | null>(null); const [sharing, setSharing] = useState(false); const [sectionPickerOpen, setSectionPickerOpen] = useState(false); const [webLogs, setWebLogs] = useState<WebLog[]>([]); const [webActivityOpen, setWebActivityOpen] = useState(false); const [resumeRequest, setResumeRequest] = useState<ResumeRequest>(); const [resumeChoice, setResumeChoice] = useState<WebSession>(); const [notice, setNotice] = useState<{ text: string; tone: "success" | "error" }>();
   const done = useMemo(() => scape?.resources.filter((item) => item.type === "task" && item.done).length ?? 0, [scape]);
   const browserSessions = useMemo(() => groupWebSessions(webLogs, scape?.browser?.activeSessionId, scape?.browser?.sessions, scape?.browser?.activeSessionName), [scape?.browser?.activeSessionId, scape?.browser?.activeSessionName, scape?.browser?.sessions, webLogs]);
+  useEffect(() => {
+    if (!user || (scape && !scape.summary)) return;
+    void loadRemoteScape(params.id);
+  }, [params.id, scape, user]);
   useEffect(() => {
     if (!scape) return;
     const timer = window.setTimeout(() => setWebLogs(scape.browser?.activity || []), 0);
@@ -346,7 +350,7 @@ function ResumeSessionChoice({ session, close, choose }: { session: WebSession; 
 function ScapeEditor({ scape, close, save, canDelete }: { scape: Scape; close: () => void; save: (scape: Scape) => Promise<void>; canDelete: boolean }) {
   const [title, setTitle] = useState(scape.title); const [description, setDescription] = useState(scape.description); const [cover, setCover] = useState(scape.cover); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [imageUploaded, setImageUploaded] = useState(scape.cover.startsWith("data:")); const [cropFile, setCropFile] = useState<File>();
   const router = useRouter();
-  function upload(file?: File) { if (!file) return; if (!file.type.startsWith("image/")) { setError("Choose an image file for the thumbnail."); return; } setError(""); setCropFile(file); }
+  function upload(file?: File) { if (!file) return; if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) { setError("Choose an image smaller than 5 MB for the thumbnail."); return; } setError(""); setCropFile(file); }
   async function submit() { if (!title.trim()) return; setSaving(true); setError(""); try { await save({ ...scape, title: title.trim(), description, cover, coverZoom: 1, coverPosition: "50% 50%", activity: [log("Scape information updated", title.trim()), ...scape.activity] }); close(); } catch { setError("Couldn’t save this Scape. Please try again."); } finally { setSaving(false); } }
   const preview = { "--scape-cover": cover.startsWith("data:") ? "url(" + cover + ")" : cover, backgroundPosition: "center", backgroundSize: "cover", backgroundRepeat: "no-repeat" } as CSSProperties;
   function remove() { if (!window.confirm("Delete " + scape.title + "? This cannot be undone.")) return; deleteScape(scape.id); router.push("/scapes"); }
@@ -360,7 +364,7 @@ function AddResource({ scape, initialType, close, onAdded, onPersistError }: { s
     const client = getBrowserSupabase(); const token = (await client?.auth.getSession())?.data.session?.access_token;
     if (client && token) {
       const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-      const prepare = await fetch("/api/resources/upload", { method: "POST", headers, body: JSON.stringify({ action: "prepare", scapeId: scape.id, fileName: file.name, mimeType: file.type }) }).catch(() => undefined);
+      const prepare = await fetch("/api/resources/upload", { method: "POST", headers, body: JSON.stringify({ action: "prepare", scapeId: scape.id, fileName: file.name, mimeType: file.type, size: file.size }) }).catch(() => undefined);
       let prepared: { bucket?: string; path?: string; token?: string; mimeType?: string; error?: string } | undefined;
       try { prepared = prepare ? await prepare.json() as typeof prepared : undefined; } catch { prepared = undefined; }
       if (prepare?.ok && prepared?.bucket && prepared.path && prepared.token) {

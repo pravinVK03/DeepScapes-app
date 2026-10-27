@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   if (!databaseEnabled) return Response.json({ error: "Database is not configured" }, { status: 503 });
-  const quota = rateLimit(request, "magic-link", 8, 15 * 60 * 1000);
+  const quota = await rateLimit(request, "magic-link", 5, 15 * 60 * 1000);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   const body = await request.json().catch(() => ({})) as { email?: string; destination?: string };
   const email = body.email?.trim().toLowerCase();

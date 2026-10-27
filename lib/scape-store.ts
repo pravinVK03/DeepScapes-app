@@ -8,6 +8,7 @@ let cachedRaw: string | null | undefined;
 let cachedScapes: Scape[] = starterScapes;
 let remoteScapesRequest: Promise<Scape[] | undefined> | undefined;
 let lastRemoteScapesSync = 0;
+const remoteSyncWindowMs = 5 * 60 * 1000;
 
 export function getScapes(): Scape[] {
   if (typeof window === "undefined") return starterScapes;
@@ -64,22 +65,38 @@ export async function loadRemoteScapes({ force = false }: { force?: boolean } = 
   // Route changes can mount the home screen more than once. Share an in-flight
   // request and reuse a very recent result so navigation never creates a burst
   // of identical Supabase reads.
-  if (!force && lastRemoteScapesSync && Date.now() - lastRemoteScapesSync < 15_000) return cachedScapes;
+  if (!force && lastRemoteScapesSync && Date.now() - lastRemoteScapesSync < remoteSyncWindowMs) return cachedScapes;
   if (remoteScapesRequest) return remoteScapesRequest;
   remoteScapesRequest = (async () => {
-    const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
-    const response = await fetch("/api/scapes", { headers: token ? { Authorization: `Bearer ${token}` } : {} }).catch(() => undefined);
+    const session = (await getBrowserSupabase()?.auth.getSession())?.data.session;
+    const token = session?.access_token;
+    const syncKey = session ? `deepscapes-last-remote-sync:${session.user.id}` : undefined;
+    const persisted = syncKey ? Number(window.sessionStorage.getItem(syncKey) || 0) : 0;
+    if (!force && persisted && Date.now() - persisted < remoteSyncWindowMs && getScapes().length) { lastRemoteScapesSync = persisted; return cachedScapes; }
+    const response = await fetch("/api/scapes", { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }).catch(() => undefined);
     if (!response?.ok) return undefined;
     try {
       const data = await response.json() as { scapes?: Scape[] };
       if (!Array.isArray(data.scapes)) return undefined;
       lastRemoteScapesSync = Date.now();
+      if (syncKey) window.sessionStorage.setItem(syncKey, String(lastRemoteScapesSync));
       return data.scapes;
     } catch {
       return undefined;
     }
   })();
   try { return await remoteScapesRequest; } finally { remoteScapesRequest = undefined; }
+}
+export async function loadRemoteScape(id: string): Promise<Scape | undefined> {
+  const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
+  const response = await fetch(`/api/scapes?id=${encodeURIComponent(id)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }).catch(() => undefined);
+  if (!response?.ok) return undefined;
+  try {
+    const data = await response.json() as { scape?: Scape };
+    if (!data.scape) return undefined;
+    saveScapes([data.scape, ...getScapes().filter((scape) => scape.id !== id)]);
+    return data.scape;
+  } catch { return undefined; }
 }
 function subscribe(onStoreChange: () => void) { window.addEventListener(changeEvent, onStoreChange); return () => window.removeEventListener(changeEvent, onStoreChange); }
 const serverSnapshot: Scape[] = [];

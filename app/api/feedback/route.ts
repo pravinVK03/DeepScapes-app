@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   const { data } = token ? await supabase.auth.getUser(token) : { data: { user: null } };
   const user = data.user;
 
-  const quota = rateLimit(request, "feedback", 5, 24 * 60 * 60 * 1000, user?.id);
+  const quota = await rateLimit(request, "feedback", 5, 24 * 60 * 60 * 1000, user?.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
 
   const message = body.message?.trim() || "";

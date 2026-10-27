@@ -231,9 +231,9 @@ export async function POST(request: Request) {
   const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
   const scape = loaded.scape!;
-  const quota = rateLimit(request, "steel-session", 6, 60 * 60 * 1000, loaded.user!.id);
+  const quota = await rateLimit(request, "steel-session", 4, 60 * 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
-  const dailyQuota = rateLimit(request, "steel-session-daily", 20, 24 * 60 * 60 * 1000, loaded.user!.id);
+  const dailyQuota = await rateLimit(request, "steel-session-daily", 10, 24 * 60 * 60 * 1000, loaded.user!.id);
   if (!dailyQuota.allowed) return rateLimited(dailyQuota.retryAfter);
 
   // No inactivityTimeout: remote input may legitimately pause while the user reads.
@@ -305,7 +305,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url); const scapeId = searchParams.get("scapeId") || undefined; const sessionId = searchParams.get("sessionId");
   const loaded = await loadScape(request, scapeId);
   if (loaded.error) return loaded.error;
-  const quota = rateLimit(request, "steel-traces", 20, 60 * 1000, loaded.user!.id);
+  const quota = await rateLimit(request, "steel-traces", 10, 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
   const response = await fetch(`https://api.steel.dev/v1/sessions/${encodeURIComponent(sessionId)}/agent-traces`, { headers: { "steel-api-key": apiKey }, cache: "no-store" }).catch(() => undefined);
@@ -323,7 +323,7 @@ export async function PATCH(request: Request) {
   const { scapeId, sessionId, target, action, sessionName, activeUrl } = body;
   const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
-  const quota = rateLimit(request, "steel-navigation", 40, 60 * 60 * 1000, loaded.user!.id);
+  const quota = await rateLimit(request, "steel-navigation", 24, 60 * 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
   if (action === "checkpoint") {
@@ -352,7 +352,7 @@ export async function DELETE(request: Request) {
   const { scapeId, sessionId, sessionName, activeUrl } = body;
   const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
-  const quota = rateLimit(request, "steel-close", 12, 60 * 60 * 1000, loaded.user!.id);
+  const quota = await rateLimit(request, "steel-close", 8, 60 * 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
   let snapshot: BrowserSessionSnapshot | undefined;

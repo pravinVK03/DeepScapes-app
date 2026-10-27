@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const user = userData.user;
   if (userError || !user?.email) return response({ error: "Session is invalid" }, 401);
   if (!user.email_confirmed_at) return response({ error: "Confirm your email before continuing" }, 403);
-  const quota = rateLimit(request, "auth-initialize", 12, 60 * 60 * 1000, user.id);
+  const quota = await rateLimit(request, "auth-initialize", 6, 60 * 60 * 1000, user.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   const metadata = user.user_metadata as Record<string, unknown>;
   // Passwordless sign-up creates a session as soon as its code is confirmed.
