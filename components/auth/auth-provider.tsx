@@ -7,21 +7,25 @@ import { getBrowserSupabase } from "@/lib/supabase-browser";
 type AuthValue = { user: User | null; loading: boolean; profileReady: boolean; signOut: () => Promise<void> };
 const AuthContext = createContext<AuthValue>({ user: null, loading: true, profileReady: false, signOut: async () => undefined });
 
-const initializationRequests = new Map<string, Promise<boolean>>();
+type InitializationState = "ready" | "pending" | "failed";
+const initializationRequests = new Map<string, Promise<InitializationState>>();
 
 async function initialize(session: Session | null) {
-  if (!session) return true;
+  if (!session) return "ready" as const;
   const existing = initializationRequests.get(session.user.id);
   if (existing) return existing;
   const request = (async () => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const response = await fetch("/api/auth/initialize", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
-        if (response.ok) return true;
-        if (response.status === 401 || response.status === 403 || response.status === 429) return false;
+        if (response.ok) {
+          const data = await response.json().catch(() => ({})) as { profilePending?: boolean };
+          return data.profilePending ? "pending" : "ready";
+        }
+        if (response.status === 401 || response.status === 403 || response.status === 429) return "failed";
       } catch { /* Retry once for a transient network interruption. */ }
     }
-    return false;
+    return "failed";
   })();
   initializationRequests.set(session.user.id, request);
   try { return await request; } finally { initializationRequests.delete(session.user.id); }
@@ -32,26 +36,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(() => Boolean(getBrowserSupabase()));
   const [profileReady, setProfileReady] = useState(false);
   const requestVersion = useRef(0);
-  const activeUserId = useRef<string | undefined>(undefined);
   useEffect(() => {
     const supabase = getBrowserSupabase();
     if (!supabase) return;
     const applySession = (next: Session | null) => {
       const version = ++requestVersion.current;
-      const nextUserId = next?.user.id;
-      const isSameUser = activeUserId.current === nextUserId;
-      activeUserId.current = nextUserId;
       setSession(next);
       setLoading(false);
       setProfileReady(!next);
       if (!next) return;
-      // Token refreshes and returning to a browser tab are not a new sign-in.
-      // Keep the current view usable and initialize only once per browser session.
+      // A completed profile is cached, but a pending profile must be checked
+      // again after updateUser changes its metadata during signup.
       const readyKey = `deepscapes-profile-ready:${next.user.id}`;
-      const alreadyReady = isSameUser || window.sessionStorage.getItem(readyKey) === "true";
+      const alreadyReady = window.sessionStorage.getItem(readyKey) === "true";
       if (alreadyReady) { setProfileReady(true); return; }
-      void initialize(next).then((ready) => {
-        if (ready) window.sessionStorage.setItem(readyKey, "true");
+      void initialize(next).then((state) => {
+        if (state === "ready") window.sessionStorage.setItem(readyKey, "true");
         if (version === requestVersion.current) setProfileReady(true);
       });
     };
@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => applySession(next));
     return () => subscription.subscription.unsubscribe();
   }, []);
-  const value = useMemo<AuthValue>(() => ({ user: session?.user ?? null, loading, profileReady, signOut: async () => { requestVersion.current += 1; activeUserId.current = undefined; setSession(null); setProfileReady(true); await getBrowserSupabase()?.auth.signOut(); } }), [session, loading, profileReady]);
+  const value = useMemo<AuthValue>(() => ({ user: session?.user ?? null, loading, profileReady, signOut: async () => { requestVersion.current += 1; setSession(null); setProfileReady(true); await getBrowserSupabase()?.auth.signOut(); } }), [session, loading, profileReady]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

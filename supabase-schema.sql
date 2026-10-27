@@ -33,6 +33,21 @@ alter table public.profiles add column if not exists display_name text;
 alter table public.profiles add column if not exists avatar text;
 alter table public.profiles add column if not exists preferences jsonb not null default '{}'::jsonb;
 
+-- Repair confirmed Auth accounts created before profile provisioning became
+-- idempotent. It never changes an existing profile and intentionally excludes
+-- unconfirmed email addresses.
+insert into public.profiles (id, username, email)
+select
+  u.id,
+  left(coalesce(nullif(btrim(regexp_replace(lower(split_part(u.email, '@', 1)), '[^a-z0-9]+', '-', 'g'), '-'), ''), 'member'), 24) || '-' || left(replace(u.id::text, '-', ''), 6),
+  u.email
+from auth.users u
+left join public.profiles p on p.id = u.id
+where p.id is null
+  and u.email is not null
+  and u.email_confirmed_at is not null
+on conflict do nothing;
+
 alter table public.scapes enable row level security;
 alter table public.templates enable row level security;
 alter table public.profiles enable row level security;

@@ -61,6 +61,16 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     } catch { setMessage("We could not prepare that profile image. Please try another image."); }
   }
 
+  async function provisionProfile() {
+    const supabase = getBrowserSupabase();
+    const token = (await supabase?.auth.getSession())?.data.session?.access_token;
+    if (!token) { setMessage("Your session expired. Open the email link again to finish creating your account."); return false; }
+    const response = await fetch("/api/auth/initialize", { method: "POST", headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }).catch(() => undefined);
+    const data = await response?.json().catch(() => undefined) as { error?: string; profilePending?: boolean } | undefined;
+    if (!response?.ok || data?.profilePending) { setMessage(data?.error || "We could not finish creating your profile. Please try again."); return false; }
+    return true;
+  }
+
   async function skipProfile() {
     const supabase = getBrowserSupabase();
     if (!supabase) return setMessage("Add the Supabase publishable key to continue.");
@@ -79,6 +89,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         profile_skipped: true,
       } });
       if (error) { setMessage(error.message); return; }
+      if (!(await provisionProfile())) return;
       setRedirecting("sign-in");
       router.replace(destination);
     } finally {
@@ -170,6 +181,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         }
         const { error } = await supabase.auth.updateUser({ data: { username: normalized, display_name: displayName.trim() || normalized, avatar, appearance_preference: appearancePreference, profile_completed: true } });
         if (error) { setMessage(error.message); return; }
+        if (!(await provisionProfile())) return;
         setRedirecting("sign-in");
         router.replace(destination);
         return;

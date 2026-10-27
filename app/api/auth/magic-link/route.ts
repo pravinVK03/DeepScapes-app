@@ -13,10 +13,11 @@ export async function POST(request: Request) {
   const origin = new URL(request.url).origin;
   const destination = body.destination?.startsWith("/") ? body.destination : "/scapes";
   const supabase = getSupabase();
-  const { data: existing, error: lookupError } = await supabase.from("profiles").select("id").eq("email", email).maybeSingle();
-  if (lookupError) return Response.json({ error: lookupError.message }, { status: 500 });
-  const redirect = new URL(existing ? destination : "/signup", origin);
-  if (!existing && destination !== "/scapes") redirect.searchParams.set("next", destination);
+  // Always pass email-link users through signup. Completed accounts redirect
+  // straight to their destination there, while pending accounts return to the
+  // profile step even after a provisional profile row has been created.
+  const redirect = new URL("/signup", origin);
+  if (destination !== "/scapes") redirect.searchParams.set("next", destination);
   const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: redirect.toString() } });
   if (error) return Response.json({ error: error.message }, { status: 400 });
   return Response.json({ sent: true }, { headers: { "Cache-Control": "no-store" } });

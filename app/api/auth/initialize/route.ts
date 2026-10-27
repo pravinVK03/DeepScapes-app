@@ -9,6 +9,11 @@ function usernameFor(email: string, metadata: Record<string, unknown>) {
   return value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "my-scape";
 }
 
+function usernameCandidates(username: string, userId: string) {
+  const safe = username.slice(0, 32) || "member";
+  return [safe, `${safe.slice(0, 24)}-${userId.slice(0, 6)}`, `${safe.slice(0, 21)}-${userId.slice(0, 9)}`];
+}
+
 function response(body: unknown, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
@@ -25,16 +30,13 @@ export async function POST(request: Request) {
   const quota = await rateLimit(request, "auth-initialize", 6, 60 * 60 * 1000, user.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   const metadata = user.user_metadata as Record<string, unknown>;
-  // Passwordless sign-up creates a session as soon as its code is confirmed.
-  // Keep first-time users out of the workspace until they complete or skip profile setup.
-  if (metadata.profile_completed !== true && typeof metadata.username !== "string") {
-    return response({ profilePending: true });
-  }
   const { data: existingProfile, error: profileReadError } = await supabase.from("profiles").select("username").eq("id", user.id).maybeSingle();
   if (profileReadError) return response({ error: profileReadError.message }, 500);
-  let username = existingProfile?.username || usernameFor(user.email, metadata);
+  const requestedUsername = usernameFor(user.email, metadata);
+  const profileComplete = metadata.profile_completed === true || typeof metadata.username === "string" || user.app_metadata.provider !== "email";
+  let username = existingProfile?.username || requestedUsername;
   if (!existingProfile) {
-    const candidates = [username, `${username.slice(0, 24)}-${user.id.slice(0, 6)}`, `${username.slice(0, 21)}-${user.id.slice(0, 9)}`];
+    const candidates = usernameCandidates(username, user.id);
     let profileCreated = false;
     for (const candidate of candidates) {
       const { error } = await supabase.from("profiles").insert({ id: user.id, username: candidate, email: user.email });
@@ -45,6 +47,21 @@ export async function POST(request: Request) {
     }
     if (!profileCreated) return response({ error: "Could not reserve a profile name. Please try again." }, 409);
   }
+
+  // Every confirmed account receives a durable profile record. While the email
+  // signup form is still open, this uses a safe temporary username; after the
+  // user chooses one, the same idempotent route promotes it before redirecting.
+  if (profileComplete && username !== requestedUsername) {
+    const { error } = await supabase.from("profiles").update({ username: requestedUsername, email: user.email }).eq("id", user.id);
+    if (error?.code === "23505") return response({ error: "That username is already in use. Choose another one." }, 409);
+    if (error) return response({ error: error.message }, 500);
+    username = requestedUsername;
+  }
+
+  // Passwordless users may leave the profile form and return later. Their
+  // profile is retained, but a personal Scape is created only once setup is
+  // complete. OAuth providers are already identity-verified and continue.
+  if (!profileComplete) return response({ profilePending: true, username });
 
   const { data: existing, error: scapeError } = await supabase.from("scapes").select("id").contains("payload", { ownerId: user.id }).limit(1);
   if (scapeError) return response({ error: scapeError.message }, 500);
