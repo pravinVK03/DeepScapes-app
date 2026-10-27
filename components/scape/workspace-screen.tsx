@@ -121,7 +121,7 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
   const [opening, setOpening] = useState(false); const [ending, setEnding] = useState(false); const [message, setMessage] = useState("");
   const [fullScreen, setFullScreen] = useState(false); const [paused, setPaused] = useState(false); const [viewerOpen, setViewerOpen] = useState(false); const [viewerKey, setViewerKey] = useState(0); const [disconnected, setDisconnected] = useState(false);
   const sessionId = scape.browser?.activeSessionId;
-  const browserRef = useRef(scape.browser); const onBrowserChangeRef = useRef(onBrowserChange); const resumedRequestRef = useRef<string | undefined>(undefined); const checkpointFailuresRef = useRef(0); const releaseActiveRef = useRef<() => Promise<BrowserSessionSnapshot | false>>(async () => false); const startSessionRef = useRef<(target: string, request?: ResumeRequest) => Promise<void>>(async () => undefined);
+  const browserRef = useRef(scape.browser); const onBrowserChangeRef = useRef(onBrowserChange); const resumedRequestRef = useRef<string | undefined>(undefined); const checkpointFailuresRef = useRef(0); const lastCheckpointAtRef = useRef(0); const releaseActiveRef = useRef<() => Promise<BrowserSessionSnapshot | false>>(async () => false); const startSessionRef = useRef<(target: string, request?: ResumeRequest) => Promise<void>>(async () => undefined);
   useEffect(() => { browserRef.current = scape.browser; onBrowserChangeRef.current = onBrowserChange; }, [onBrowserChange, scape.browser]);
   useEffect(() => {
     if (!fullScreen) return;
@@ -144,9 +144,16 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     if (save && (merged.length !== current.length || (lastUrl && lastUrl !== browserRef.current?.lastUrl))) persist({ activity: merged, lastUrl });
     return merged;
   }, [persist, scape.id, sessionId]);
-  useEffect(() => { if (!sessionId || !viewerOpen) return; void syncActivity(); const timer = window.setInterval(() => void syncActivity(), 30_000); return () => window.clearInterval(timer); }, [sessionId, syncActivity, viewerOpen]);
+  useEffect(() => {
+    if (!sessionId || !viewerOpen) return;
+    const syncIfVisible = () => { if (document.visibilityState === "visible") void syncActivity(); };
+    syncIfVisible();
+    const timer = window.setInterval(syncIfVisible, 90_000);
+    document.addEventListener("visibilitychange", syncIfVisible);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", syncIfVisible); };
+  }, [sessionId, syncActivity, viewerOpen]);
   const checkpoint = useCallback(async () => {
-    if (!sessionId || ending) return;
+    if (!sessionId || ending || Date.now() - lastCheckpointAtRef.current < 45_000) return;
     const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token; if (!token) return;
     const response = await fetch("/api/browser/session", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: "checkpoint", scapeId: scape.id, sessionId, sessionName: sessionName.trim() || browserRef.current?.activeSessionName, activeUrl: browserRef.current?.lastUrl }) }).catch(() => undefined);
     let data: { snapshot?: BrowserSessionSnapshot } | undefined; try { data = response ? await response.json() as typeof data : undefined; } catch { data = undefined; }
@@ -155,13 +162,13 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
       if (checkpointFailuresRef.current > 1) { setDisconnected(true); setMessage("The live browser disconnected. Your latest checkpoint is ready to restore."); }
       return;
     }
-    checkpointFailuresRef.current = 0; setDisconnected(false);
+    checkpointFailuresRef.current = 0; lastCheckpointAtRef.current = Date.now(); setDisconnected(false);
     persist({ sessions: { ...(browserRef.current?.sessions || {}), [sessionId]: data.snapshot } });
   }, [ending, persist, scape.id, sessionId, sessionName]);
   useEffect(() => {
     if (!sessionId || !viewerOpen) return;
-    const first = window.setTimeout(() => void checkpoint(), 12_000);
-    const timer = window.setInterval(() => void checkpoint(), 90_000);
+    const first = window.setTimeout(() => void checkpoint(), 45_000);
+    const timer = window.setInterval(() => void checkpoint(), 180_000);
     const onVisibility = () => { if (document.visibilityState === "hidden") void checkpoint(); };
     document.addEventListener("visibilitychange", onVisibility);
     return () => { window.clearTimeout(first); window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
@@ -268,12 +275,9 @@ function InScapeBrowser({ scape, resumeRequest, onBrowserChange }: { scape: Scap
     if (!sessionId || !scape.browser?.expiresAt || !viewerOpen) return;
     const remaining = new Date(scape.browser.expiresAt).getTime() - Date.now() - 45_000;
     if (remaining <= 0) { const timer = window.setTimeout(() => setDisconnected(true), 0); return () => window.clearTimeout(timer); }
-    const timer = window.setTimeout(async () => {
-      setMessage("Saving a checkpoint before Steel's session limit…");
-      const saved = await releaseActiveRef.current();
-      if (!saved || !saved.tabs.length) return;
-      const activeTab = saved.tabs[saved.activeTab ?? 0] || saved.tabs.find((tab) => tab.active);
-      await startSessionRef.current(activeTab?.url || "", { key: crypto.randomUUID(), mode: "resume", name: saved.name, snapshot: saved });
+    const timer = window.setTimeout(() => {
+      setMessage("Steel's session limit is close. Saving and ending this session so you can resume only when needed…");
+      void releaseActiveRef.current();
     }, remaining);
     return () => window.clearTimeout(timer);
   }, [scape.browser?.expiresAt, sessionId, viewerOpen]);

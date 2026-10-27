@@ -102,6 +102,7 @@ export function AppHeader({ compact = false, onShare }: { compact?: boolean; onS
               <div className="px-3 py-2"><p className="truncate text-sm font-medium">{displayName}</p><p className="truncate text-xs text-[#718077]">{user.email}</p></div>
               <div className="mx-2 my-1 border-t border-[#e5e8e2] pt-1">
                 <Link href="/settings/profile" onClick={() => setProfileOpen(false)} className="block rounded-lg px-2 py-2 text-sm hover:bg-[#edf0df]">Profile settings</Link>
+                <Link href="/help" onClick={() => setProfileOpen(false)} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-[#edf0df]"><Icon name="help" className="h-4 w-4" />Help &amp; guide</Link>
               </div>
               {canConnectGmail && <div className="mx-2 my-1 border-t border-[#e5e8e2] pt-1">
                 <button type="button" onClick={() => void connectGmail()} disabled={connectingGmail} className="block w-full rounded-lg px-2 py-2 text-left text-sm hover:bg-[#edf0df] disabled:opacity-50">{connectingGmail ? "Opening Gmail…" : "Connect feedback inbox"}</button>

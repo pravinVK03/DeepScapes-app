@@ -228,6 +228,7 @@ export async function POST(request: Request) {
   const body = await requestBody<{ scapeId?: string; target?: string; sessionName?: string; snapshot?: BrowserSessionSnapshot; sourceSessionId?: string }>(request);
   if (!body) return Response.json({ error: "Invalid browser request" }, { status: 400 });
   const { scapeId, target, sessionName, snapshot, sourceSessionId } = body;
+  if ((target?.length || 0) > 1_000 || (sessionName?.length || 0) > 120 || (snapshot?.tabs.length || 0) > 20) return Response.json({ error: "This browser request is too large." }, { status: 400 });
   const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
   const scape = loaded.scape!;
@@ -238,7 +239,7 @@ export async function POST(request: Request) {
 
   // No inactivityTimeout: remote input may legitimately pause while the user reads.
   // Steel still enforces the plan's hard session lifetime.
-  const requestedTimeout = Math.max(300_000, Math.min(86_400_000, Number(process.env.STEEL_SESSION_TIMEOUT_MS) || 900_000));
+  const requestedTimeout = Math.max(120_000, Math.min(900_000, Number(process.env.STEEL_SESSION_TIMEOUT_MS) || 600_000));
   // Steel's cursor tracks the streamed desktop and receives interactive input.
   // The host iframe pointer is hidden in the client so only this cursor shows.
   const viewerConfig = { debugConfig: { interactive: true, systemCursor: true }, timeout: requestedTimeout };
@@ -271,11 +272,9 @@ export async function POST(request: Request) {
   try { session = response ? await response.json() as SteelSession : undefined; } catch { session = undefined; }
   if (!response?.ok || !session) {
     const status = response?.status;
-    const message = status === 401 || status === 403
-      ? "Steel rejected the configured API key. Create or update STEEL_API_KEY in Vercel, then retry."
-      : status === 402 || status === 429
-        ? "Steel account usage is unavailable. Check the Steel account credits or rate limit, then retry."
-        : "Steel could not start a remote browser. Please retry shortly.";
+    const message = status === 401 || status === 403 || status === 402 || status === 429
+      ? "Remote browsing is temporarily unavailable. Please try again later."
+      : "Steel could not start a remote browser. Please retry shortly.";
     return Response.json({ error: message, providerStatus: status }, { status: 502 });
   }
   // Steel's headful live viewer is the public debug URL. sessionViewerUrl is
@@ -303,7 +302,7 @@ export async function GET(request: Request) {
   const apiKey = process.env.STEEL_API_KEY;
   if (!apiKey) return Response.json({ error: "Remote browsing is not configured" }, { status: 503 });
   const { searchParams } = new URL(request.url); const scapeId = searchParams.get("scapeId") || undefined; const sessionId = searchParams.get("sessionId");
-  const loaded = await loadScape(request, scapeId);
+  const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
   const quota = await rateLimit(request, "steel-traces", 10, 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
@@ -321,6 +320,7 @@ export async function PATCH(request: Request) {
   const body = await requestBody<{ scapeId?: string; sessionId?: string; target?: string; action?: "navigate" | "checkpoint"; sessionName?: string; activeUrl?: string }>(request);
   if (!body) return Response.json({ error: "Invalid browser request" }, { status: 400 });
   const { scapeId, sessionId, target, action, sessionName, activeUrl } = body;
+  if ((target?.length || 0) > 1_000 || (sessionName?.length || 0) > 120 || (activeUrl?.length || 0) > 2_048) return Response.json({ error: "This browser request is too large." }, { status: 400 });
   const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
   const quota = await rateLimit(request, "steel-navigation", 24, 60 * 60 * 1000, loaded.user!.id);
@@ -350,6 +350,7 @@ export async function DELETE(request: Request) {
   const body = await requestBody<{ scapeId?: string; sessionId?: string; sessionName?: string; activeUrl?: string }>(request);
   if (!body) return Response.json({ error: "Invalid browser request" }, { status: 400 });
   const { scapeId, sessionId, sessionName, activeUrl } = body;
+  if ((sessionName?.length || 0) > 120 || (activeUrl?.length || 0) > 2_048) return Response.json({ error: "This browser request is too large." }, { status: 400 });
   const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
   const quota = await rateLimit(request, "steel-close", 8, 60 * 60 * 1000, loaded.user!.id);
