@@ -1,110 +1,47 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
-import { Activity, Scape } from "@/lib/mock-data";
+import { BrowserState, Collaborator, Resource, Scape } from "@/lib/mock-data";
 import { rateLimit, rateLimited } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 const maxScapePayloadBytes = 2 * 1024 * 1024;
+const coverBucket = "deepscapes-covers";
 
-async function currentUser(request: Request) {
-  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (!token) return undefined;
-  const { data } = await getSupabase().auth.getUser(token);
-  return data.user;
+async function currentUser(request: Request) { const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, ""); if (!token) return undefined; return (await getSupabase().auth.getUser(token)).data.user; }
+function text(value: unknown, fallback = "") { return typeof value === "string" ? value : fallback; }
+function bool(value: unknown) { return value === true || value === "true"; }
+function access(scape: Scape, userId: string, email?: string, edit = false) { if (scape.ownerId === userId) return true; const person = scape.collaborators?.find((item) => item.id === userId || (email && item.email === email)); return Boolean(person && (!edit || person.permission === "edit")); }
+
+async function signedCover(path?: string, fallback = "#1d4ed8") { if (!path) return fallback; return (await getSupabase().storage.from(coverBucket).createSignedUrl(path, 3600)).data?.signedUrl || fallback; }
+
+async function loadScape(id: string): Promise<Scape | undefined> {
+  const supabase = getSupabase(); const { data: base, error } = await supabase.from("scapes").select("id,owner_id,title,description,template,cover_value,cover_path,cover_position,cover_zoom,starred,archived,hidden_sections,created_at,updated_at").eq("id", id).maybeSingle();
+  if (error || !base) return undefined;
+  const [people, resources, activity, state, sessions, events] = await Promise.all([
+    supabase.from("scape_collaborators").select("user_id,email,name,permission,pending").eq("scape_id", id), supabase.from("scape_resources").select("id,type,title,detail,occurred_at,done,starred,group_name,content,download_url,mime_type").eq("scape_id", id).order("updated_at", { ascending: false }), supabase.from("scape_activity").select("id,action,detail,occurred_at,actor_id,actor_name,actor_email").eq("scape_id", id).order("occurred_at", { ascending: false }).limit(150), supabase.from("scape_browser_state").select("profile_id,active_session_id,active_session_name,live_view_url,expires_at,last_target,last_url,updated_at").eq("scape_id", id).maybeSingle(), supabase.from("scape_browser_sessions").select("session_id,name,captured_at,active_tab,tabs,source_session_id").eq("scape_id", id), supabase.from("scape_browser_events").select("id,session_id,type,occurred_at,url,target,detail").eq("scape_id", id).order("occurred_at", { ascending: false }).limit(750),
+  ]);
+  const rows = <T,>(data: unknown) => (Array.isArray(data) ? data : []) as T[];
+  const stateRow = state.data as Record<string, unknown> | null; const sessionRows = rows<Record<string, unknown>>(sessions.data); const eventRows = rows<Record<string, unknown>>(events.data);
+  const browser: BrowserState | undefined = stateRow || sessionRows.length || eventRows.length ? { profileId: text(stateRow?.profile_id) || undefined, activeSessionId: text(stateRow?.active_session_id) || undefined, activeSessionName: text(stateRow?.active_session_name) || undefined, liveViewUrl: text(stateRow?.live_view_url) || undefined, expiresAt: text(stateRow?.expires_at) || undefined, lastTarget: text(stateRow?.last_target) || undefined, lastUrl: text(stateRow?.last_url) || undefined, updatedAt: text(stateRow?.updated_at) || undefined, sessions: Object.fromEntries(sessionRows.map((row) => [text(row.session_id), { sessionId: text(row.session_id), name: text(row.name, "Browsing session"), capturedAt: text(row.captured_at), activeTab: typeof row.active_tab === "number" ? row.active_tab : undefined, tabs: Array.isArray(row.tabs) ? row.tabs : [], sourceSessionId: text(row.source_session_id) || undefined }])), activity: eventRows.map((row) => ({ id: text(row.id), sessionId: text(row.session_id), type: text(row.type), time: text(row.occurred_at), url: text(row.url) || undefined, target: text(row.target) || undefined, detail: text(row.detail) || undefined })) } : undefined;
+  return { id: text(base.id), ownerId: text(base.owner_id) || undefined, title: text(base.title, "Untitled Scape"), description: text(base.description), template: text(base.template, "Blank Scape"), cover: await signedCover(text(base.cover_path) || undefined, text(base.cover_value, "#1d4ed8")), coverPosition: text(base.cover_position) || undefined, coverZoom: Number(base.cover_zoom) || undefined, starred: bool(base.starred), archived: bool(base.archived), hiddenSections: Array.isArray(base.hidden_sections) ? base.hidden_sections : [], createdAt: text(base.created_at) || undefined, updatedAt: text(base.updated_at) || undefined, updated: "Recently", collaborators: rows<Record<string, unknown>>(people.data).map((row) => ({ id: text(row.user_id), email: text(row.email), name: text(row.name), permission: text(row.permission, "view") as Collaborator["permission"], pending: bool(row.pending) })), resources: rows<Record<string, unknown>>(resources.data).map((row) => ({ id: text(row.id), type: text(row.type) as Resource["type"], title: text(row.title), detail: text(row.detail), date: text(row.occurred_at), done: bool(row.done), starred: bool(row.starred), group: text(row.group_name) || undefined, content: text(row.content) || undefined, downloadUrl: text(row.download_url) || undefined, mimeType: text(row.mime_type) || undefined })), activity: rows<Record<string, unknown>>(activity.data).map((row) => ({ id: text(row.id), action: text(row.action), detail: text(row.detail), time: text(row.occurred_at), actorId: text(row.actor_id) || undefined, actorName: text(row.actor_name) || undefined, actorEmail: text(row.actor_email) || undefined })), browser };
 }
 
-function canAccess(scape: Scape, userId: string, email?: string, needsEdit = false) {
-  if (scape.ownerId === userId) return true;
-  const collaborator = scape.collaborators?.find((person) => person.id === userId || (Boolean(email) && person.email === email));
-  return Boolean(collaborator && (!needsEdit || collaborator.permission === "edit"));
+async function dashboard(userId: string, email?: string) {
+  const supabase = getSupabase(); const [{ data: owned }, { data: direct }, { data: byEmail }] = await Promise.all([supabase.from("scapes").select("id,owner_id,title,description,template,cover_value,cover_path,cover_position,cover_zoom,starred,archived,created_at,updated_at").eq("owner_id", userId).order("updated_at", { ascending: false }), supabase.from("scape_collaborators").select("scape_id").eq("user_id", userId), email ? supabase.from("scape_collaborators").select("scape_id").eq("email", email) : Promise.resolve({ data: [] as { scape_id: string }[] })]);
+  const ids = [...new Set([...(direct || []).map((row) => row.scape_id), ...(byEmail || []).map((row) => row.scape_id)])]; const { data: shared } = ids.length ? await supabase.from("scapes").select("id,owner_id,title,description,template,cover_value,cover_path,cover_position,cover_zoom,starred,archived,created_at,updated_at").in("id", ids) : { data: [] };
+  return await Promise.all([...(owned || []), ...(shared || [])].map(async (row) => ({ id: text(row.id), ownerId: text(row.owner_id) || undefined, title: text(row.title, "Untitled Scape"), description: text(row.description), template: text(row.template, "Blank Scape"), cover: await signedCover(text(row.cover_path) || undefined, text(row.cover_value, "#1d4ed8")), coverPosition: text(row.cover_position) || undefined, coverZoom: Number(row.cover_zoom) || undefined, starred: bool(row.starred), archived: bool(row.archived), createdAt: text(row.created_at) || undefined, updatedAt: text(row.updated_at) || undefined, updated: "Recently", collaborators: [], resources: [], activity: [], summary: true } as Scape)));
 }
 
-export async function GET(request: Request) {
-  if (!databaseEnabled) return Response.json({ scapes: [], connected: false });
-  const user = await currentUser(request);
-  if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
-  const quota = await rateLimit(request, "scape-read", 30, 60 * 60 * 1000, user.id);
-  if (!quota.allowed) return rateLimited(quota.retryAfter);
-  const supabase = getSupabase();
-  const requestedId = new URL(request.url).searchParams.get("id");
-  if (requestedId) {
-    const { data: row, error } = await supabase.from("scapes").select("payload, created_at, updated_at").eq("id", requestedId).maybeSingle();
-    const payload = row?.payload as Scape | undefined;
-    if (error) return Response.json({ error: error.message }, { status: 500 });
-    if (!payload || !row || !canAccess(payload, user.id, user.email)) return Response.json({ error: "Scape not found" }, { status: 404 });
-    return Response.json({ scape: { ...payload, createdAt: payload.createdAt ?? row.created_at, updatedAt: row.updated_at ?? payload.updatedAt }, connected: true }, { headers: { "Cache-Control": "private, no-store" } });
-  }
-  // The dashboard needs only card metadata. Selecting JSON fields directly
-  // prevents notes, activity logs, browser snapshots, and large documents from
-  // leaving the database every time the home screen opens.
-  const select = "id, created_at, updated_at, title:payload->>title, description:payload->>description, template:payload->>template, cover:payload->>cover, coverPosition:payload->>coverPosition, coverZoom:payload->>coverZoom, updated:payload->>updated, ownerId:payload->>ownerId, starred:payload->>starred, archived:payload->>archived, collaborators:payload->collaborators";
-  const filters = [
-    supabase.from("scapes").select(select).contains("payload", { ownerId: user.id }).order("updated_at", { ascending: false }),
-    supabase.from("scapes").select(select).contains("payload", { collaborators: [{ id: user.id }] }).order("updated_at", { ascending: false }),
-    ...(user.email ? [supabase.from("scapes").select(select).contains("payload", { collaborators: [{ email: user.email }] }).order("updated_at", { ascending: false })] : []),
-  ];
-  const results = await Promise.all(filters);
-  const error = results.find((result) => result.error)?.error;
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  const rows = [...new Map(results.flatMap((result) => result.data || []).map((row) => [row.id, row])).values()]
-    .sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime());
-  const scapes = rows
-    .map((row) => {
-      const value = row as Record<string, unknown>;
-      return { id: String(value.id), title: String(value.title || "Untitled Scape"), description: String(value.description || ""), template: String(value.template || "Blank Scape"), cover: String(value.cover || "#1d4ed8"), coverPosition: typeof value.coverPosition === "string" ? value.coverPosition : undefined, coverZoom: Number(value.coverZoom) || undefined, updated: String(value.updated || "Recently"), createdAt: typeof value.created_at === "string" ? value.created_at : undefined, updatedAt: typeof value.updated_at === "string" ? value.updated_at : undefined, starred: value.starred === true || value.starred === "true", archived: value.archived === true || value.archived === "true", ownerId: typeof value.ownerId === "string" ? value.ownerId : undefined, collaborators: Array.isArray(value.collaborators) ? value.collaborators : [], resources: [], activity: [], summary: true } as Scape;
-    })
-    .filter((scape) => canAccess(scape, user.id, user.email));
-  return Response.json({ scapes, connected: true }, { headers: { "Cache-Control": "private, no-store" } });
-}
+async function storeCover(scape: Scape, ownerId: string) { if (!scape.cover.startsWith("data:image/")) return { value: scape.cover, path: undefined }; const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(scape.cover); if (!match) throw new Error("Choose a JPEG, PNG, or WebP thumbnail."); const bytes = Buffer.from(match[2], "base64"); if (bytes.byteLength > 1_000_000) throw new Error("Thumbnail is too large."); const ext = match[1] === "image/png" ? "png" : match[1] === "image/webp" ? "webp" : "jpg"; const path = `${ownerId}/${scape.id}/${Date.now()}.${ext}`; const { error } = await getSupabase().storage.from(coverBucket).upload(path, bytes, { contentType: match[1] }); if (error) throw new Error("Thumbnail could not be saved to secure storage."); return { value: "#1d4ed8", path }; }
+
+export async function GET(request: Request) { if (!databaseEnabled) return Response.json({ scapes: [], connected: false }); const user = await currentUser(request); if (!user) return Response.json({ error: "Sign in required" }, { status: 401 }); const quota = await rateLimit(request, "scape-read", 30, 60 * 60 * 1000, user.id); if (!quota.allowed) return rateLimited(quota.retryAfter); const id = new URL(request.url).searchParams.get("id"); if (id) { const scape = await loadScape(id); if (!scape || !access(scape, user.id, user.email)) return Response.json({ error: "Scape not found" }, { status: 404 }); return Response.json({ scape, connected: true }, { headers: { "Cache-Control": "private, no-store" } }); } return Response.json({ scapes: await dashboard(user.id, user.email), connected: true }, { headers: { "Cache-Control": "private, no-store" } }); }
 
 export async function POST(request: Request) {
-  if (!databaseEnabled) return Response.json({ connected: false }, { status: 503 });
-  const user = await currentUser(request);
-  if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
-  const quota = await rateLimit(request, "scape-write", 45, 60 * 60 * 1000, user.id);
-  if (!quota.allowed) return rateLimited(quota.retryAfter);
-  const contentLength = Number(request.headers.get("content-length") || 0);
-  if (contentLength > maxScapePayloadBytes) return Response.json({ error: "This Scape is too large to save. Keep covers and embedded content compact." }, { status: 413 });
-  const raw = await request.text().catch(() => "");
-  if (new TextEncoder().encode(raw).byteLength > maxScapePayloadBytes) return Response.json({ error: "This Scape is too large to save. Keep covers and embedded content compact." }, { status: 413 });
-  const received = (() => { try { return JSON.parse(raw) as Partial<Scape>; } catch { return undefined; } })();
-  if (!received || typeof received.id !== "string" || !received.id.trim() || received.id.length > 200 || typeof received.title !== "string" || !Array.isArray(received.resources) || !Array.isArray(received.activity)) {
-    return Response.json({ error: "A valid Scape payload is required" }, { status: 400 });
-  }
-  const nextScape = received as Scape;
-  const { data: existing } = await getSupabase().from("scapes").select("payload, created_at").eq("id", nextScape.id).maybeSingle();
-  const existingScape = existing?.payload as Scape | undefined;
-  if (nextScape.cover.startsWith("data:") && nextScape.cover.length > 300_000 && existingScape?.cover !== nextScape.cover) return Response.json({ error: "Thumbnail is too large. Choose a smaller image and crop it before saving." }, { status: 413 });
-  if (existingScape && !canAccess(existingScape, user.id, user.email, true)) return Response.json({ error: "Editor access is required" }, { status: 403 });
-  const actor = { actorId: user.id, actorName: user.user_metadata?.username || user.email?.split("@")[0] || "Collaborator", actorEmail: user.email };
-  const knownIds = new Set(existingScape?.activity.map((item) => item.id) || []);
-  const newActivity = nextScape.activity.filter((item) => !knownIds.has(item.id)).map((item) => ({ ...item, ...actor, time: new Date(item.time).toString() === "Invalid Date" ? new Date().toISOString() : item.time }));
-  const retainedActivity = existingScape?.activity || [];
-  const activity: Activity[] = [...newActivity, ...retainedActivity].slice(0, 150);
-  const now = new Date().toISOString();
-  const scape: Scape = existingScape
-    ? { ...nextScape, ownerId: existingScape.ownerId, createdAt: existingScape.createdAt ?? existing?.created_at, updatedAt: now, collaborators: existingScape.ownerId === user.id ? nextScape.collaborators : existingScape.collaborators, activity }
-    : { ...nextScape, activity: nextScape.activity.map((item) => ({ ...item, ...actor })), createdAt: nextScape.createdAt ?? now, updatedAt: now, ownerId: user.id, collaborators: nextScape.collaborators?.length ? nextScape.collaborators : [{ id: user.id, name: user.email?.split("@")[0] ?? "Owner", email: user.email ?? "", permission: "edit" }] };
-  const { error } = await getSupabase().from("scapes").upsert(
-    { id: scape.id, payload: scape, updated_at: now },
-    { onConflict: "id" },
-  );
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ connected: true });
+  if (!databaseEnabled) return Response.json({ connected: false }, { status: 503 }); const user = await currentUser(request); if (!user) return Response.json({ error: "Sign in required" }, { status: 401 }); const quota = await rateLimit(request, "scape-write", 45, 60 * 60 * 1000, user.id); if (!quota.allowed) return rateLimited(quota.retryAfter); const raw = await request.text().catch(() => ""); if (new TextEncoder().encode(raw).byteLength > maxScapePayloadBytes) return Response.json({ error: "This Scape is too large to save." }, { status: 413 }); const received = (() => { try { return JSON.parse(raw) as Scape; } catch { return undefined; } })(); if (!received?.id || !received.title || !Array.isArray(received.resources) || !Array.isArray(received.activity)) return Response.json({ error: "A valid Scape payload is required" }, { status: 400 });
+  const existing = await loadScape(received.id); if (existing && !access(existing, user.id, user.email, true)) return Response.json({ error: "Editor access is required" }, { status: 403 }); const now = new Date().toISOString(); const ownerId = existing?.ownerId || user.id; let cover; try { cover = await storeCover(received, ownerId); } catch (cause) { return Response.json({ error: cause instanceof Error ? cause.message : "Thumbnail could not be saved." }, { status: 413 }); }
+  const scape: Scape = { ...received, ownerId, cover: cover.value, createdAt: existing?.createdAt || received.createdAt || now, updatedAt: now, collaborators: ownerId === user.id ? received.collaborators : existing?.collaborators || [], activity: received.activity.slice(0, 150) }; const supabase = getSupabase(); const { error } = await supabase.from("scapes").upsert({ id: scape.id, payload: scape, owner_id: ownerId, title: scape.title, description: scape.description, template: scape.template, cover_value: cover.value, ...(cover.path ? { cover_path: cover.path } : {}), cover_position: scape.coverPosition || null, cover_zoom: scape.coverZoom || null, starred: Boolean(scape.starred), archived: Boolean(scape.archived), hidden_sections: scape.hiddenSections || [], updated_at: now }, { onConflict: "id" }); if (error) return Response.json({ error: error.message }, { status: 500 });
+  await Promise.all([supabase.from("scape_collaborators").delete().eq("scape_id", scape.id), supabase.from("scape_resources").delete().eq("scape_id", scape.id), supabase.from("scape_activity").delete().eq("scape_id", scape.id), supabase.from("scape_browser_sessions").delete().eq("scape_id", scape.id), supabase.from("scape_browser_events").delete().eq("scape_id", scape.id), supabase.from("scape_browser_state").delete().eq("scape_id", scape.id)]);
+  const people = scape.collaborators?.map((item) => ({ scape_id: scape.id, collaborator_key: item.id || item.email, user_id: item.id || null, email: item.email || null, name: item.name || "", permission: item.permission, pending: Boolean(item.pending) })) || []; const resources = scape.resources.map((item) => ({ id: item.id, scape_id: scape.id, type: item.type, title: item.title, detail: item.detail || "", occurred_at: /^\d{4}-/.test(item.date || "") ? item.date : now, done: Boolean(item.done), starred: Boolean(item.starred), group_name: item.group || null, content: item.content || null, download_url: item.downloadUrl || null, mime_type: item.mimeType || null, updated_at: now })); const activities = scape.activity.map((item) => ({ id: item.id, scape_id: scape.id, action: item.action, detail: item.detail || "", occurred_at: /^\d{4}-/.test(item.time || "") ? item.time : now, actor_id: user.id, actor_name: text(user.user_metadata?.username, user.email?.split("@")[0] || "Collaborator"), actor_email: user.email || null })); const browser = scape.browser; const sessions = Object.values(browser?.sessions || {}).map((item) => ({ session_id: item.sessionId, scape_id: scape.id, name: item.name, captured_at: item.capturedAt, active_tab: item.activeTab ?? null, tabs: item.tabs, source_session_id: item.sourceSessionId || null })); const events = (browser?.activity || []).map((item) => ({ id: item.id, scape_id: scape.id, session_id: item.sessionId || null, type: item.type, occurred_at: /^\d{4}-/.test(item.time || "") ? item.time : now, url: item.url || null, target: item.target || null, detail: item.detail || null }));
+  const writes = await Promise.all([people.length ? supabase.from("scape_collaborators").insert(people) : Promise.resolve({ error: null }), resources.length ? supabase.from("scape_resources").insert(resources) : Promise.resolve({ error: null }), activities.length ? supabase.from("scape_activity").insert(activities) : Promise.resolve({ error: null }), sessions.length ? supabase.from("scape_browser_sessions").insert(sessions) : Promise.resolve({ error: null }), events.length ? supabase.from("scape_browser_events").insert(events) : Promise.resolve({ error: null }), browser ? supabase.from("scape_browser_state").upsert({ scape_id: scape.id, profile_id: browser.profileId || null, active_session_id: browser.activeSessionId || null, active_session_name: browser.activeSessionName || null, live_view_url: browser.liveViewUrl || null, expires_at: browser.expiresAt || null, last_target: browser.lastTarget || null, last_url: browser.lastUrl || null, updated_at: now }) : Promise.resolve({ error: null })]); const failure = writes.find((result) => result.error)?.error; if (failure) return Response.json({ error: failure.message }, { status: 500 }); return Response.json({ connected: true, scape: await loadScape(scape.id) });
 }
 
-export async function DELETE(request: Request) {
-  if (!databaseEnabled) return Response.json({ connected: false }, { status: 503 });
-  const user = await currentUser(request);
-  if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
-  const quota = await rateLimit(request, "scape-delete", 10, 60 * 60 * 1000, user.id);
-  if (!quota.allowed) return rateLimited(quota.retryAfter);
-  const id = new URL(request.url).searchParams.get("id");
-  if (!id) return Response.json({ error: "Scape id is required" }, { status: 400 });
-  const { data: existing } = await getSupabase().from("scapes").select("payload").eq("id", id).maybeSingle();
-  const scape = existing?.payload as Scape | undefined;
-  if (!scape || scape.ownerId !== user.id) return Response.json({ error: "Only the owner can delete this Scape" }, { status: 403 });
-  const { error } = await getSupabase().from("scapes").delete().eq("id", id);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ connected: true });
-}
-
+export async function DELETE(request: Request) { if (!databaseEnabled) return Response.json({ connected: false }, { status: 503 }); const user = await currentUser(request); if (!user) return Response.json({ error: "Sign in required" }, { status: 401 }); const id = new URL(request.url).searchParams.get("id"); if (!id) return Response.json({ error: "Scape id is required" }, { status: 400 }); const scape = await loadScape(id); if (!scape || scape.ownerId !== user.id) return Response.json({ error: "Only the owner can delete this Scape" }, { status: 403 }); const { error } = await getSupabase().from("scapes").delete().eq("id", id); if (error) return Response.json({ error: error.message }, { status: 500 }); return Response.json({ connected: true }); }

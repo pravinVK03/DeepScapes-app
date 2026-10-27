@@ -60,6 +60,10 @@ export async function persistScape(scape: Scape) {
     body: JSON.stringify(scape),
   });
   if (!response.ok) throw new Error("DeepScapes could not save this change. Check your database connection and try again.");
+  const data = await response.json().catch(() => undefined) as { scape?: Scape } | undefined;
+  // Replace locally-held data URLs with the server's short-lived Storage URL
+  // as soon as persistence completes, so image bytes never linger in cache.
+  if (data?.scape) saveScapes([data.scape, ...getScapes().filter((item) => item.id !== data.scape!.id)]);
 }
 export async function loadRemoteScapes({ force = false }: { force?: boolean } = {}): Promise<Scape[] | undefined> {
   // Route changes can mount the home screen more than once. Share an in-flight
