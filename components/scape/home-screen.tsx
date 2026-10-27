@@ -7,7 +7,7 @@ import { AppHeader } from "@/components/ui/app-header";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Icon } from "@/components/ui/icons";
 import { Scape } from "@/lib/mock-data";
-import { loadRemoteScapes, saveScapes, useScapes } from "@/lib/scape-store";
+import { loadRemoteScapes, saveScape, saveScapes, useScapes } from "@/lib/scape-store";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 
 function dateLabel(prefix: "Created" | "Updated", value?: string) {
@@ -26,7 +26,7 @@ function dateLabel(prefix: "Created" | "Updated", value?: string) {
 }
 
 function ScapeCard({ scape, index }: { scape: Scape; index: number }) {
-  const cover = { "--scape-cover": scape.cover.startsWith("data:") ? `url(${scape.cover})` : scape.cover } as CSSProperties;
+  const cover = { "--scape-cover": scape.cover.startsWith("data:") ? `url(${scape.cover})` : scape.cover, backgroundPosition: scape.coverPosition || "center", backgroundSize: scape.coverZoom && scape.coverZoom > 1 ? `${scape.coverZoom * 100}% auto` : "cover", backgroundRepeat: "no-repeat" } as CSSProperties;
   return <Link href={`/workspace/${scape.id}`} className="scape-card rise group overflow-hidden rounded-2xl border border-[#e5e8e2] bg-white shadow-[0_8px_30px_rgba(23,35,29,.035)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(23,35,29,.09)]" style={{ animationDelay: `${index * 70}ms` }}>
     <div className="scape-card-cover h-36 p-4" style={cover}><div className="flex h-full items-end"><span className="rounded-full bg-black/30 px-3 py-1 text-xs text-white backdrop-blur">{scape.template}</span></div></div>
     <div className="p-4"><div className="flex items-center justify-between"><h3 className="font-semibold tracking-[-.03em]">{scape.title}</h3><Icon name="arrow" className="h-4 w-4 text-[#718077] transition group-hover:translate-x-1" /></div>{scape.description && <p className="mt-2 line-clamp-2 text-sm leading-5 text-[#718077]">{scape.description}</p>}<div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-[#edf0eb] pt-3 text-xs"><span className="text-[#9aa39d]">{dateLabel("Created", scape.createdAt)}</span><span className="font-medium text-[#607168]">{dateLabel("Updated", scape.updatedAt ?? scape.createdAt)}</span></div></div>
@@ -67,7 +67,7 @@ function FeedbackForm() {
 }
 
 export default function HomeScreen() {
-  const scapes = useScapes(); const { user } = useAuth(); const [query, setQuery] = useState(""); const loadedUser = useRef<string | undefined>(undefined);
+  const scapes = useScapes(); const { user } = useAuth(); const [query, setQuery] = useState(""); const [showArchived, setShowArchived] = useState(false); const loadedUser = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!user) { loadedUser.current = undefined; return; }
     if (loadedUser.current === user.id) return;
@@ -80,10 +80,11 @@ export default function HomeScreen() {
       if (remoteScapes) saveScapes(remoteScapes);
     });
   }, [user]);
-  const { personalScape, recentScapes } = useMemo(() => {
-    const personal = scapes.find((scape) => scape.id === `scape-${user?.id}`);
-    const recent = scapes.filter((scape) => scape.id !== personal?.id);
-    return { personalScape: personal, recentScapes: recent.filter((scape) => scape.title.toLowerCase().includes(query.toLowerCase())) };
+  const { personalScape, recentScapes, archivedScapes } = useMemo(() => {
+    const active = scapes.filter((scape) => !scape.archived);
+    const personal = active.find((scape) => scape.id === `scape-${user?.id}`);
+    const recent = active.filter((scape) => scape.id !== personal?.id).sort((left, right) => Number(Boolean(right.starred)) - Number(Boolean(left.starred)));
+    return { personalScape: personal, recentScapes: recent.filter((scape) => scape.title.toLowerCase().includes(query.toLowerCase())), archivedScapes: scapes.filter((scape) => scape.archived).filter((scape) => scape.title.toLowerCase().includes(query.toLowerCase())) };
   }, [query, scapes, user?.id]);
 
   // Keep the workspace visible during a refresh. A full-screen loading state
@@ -92,7 +93,7 @@ export default function HomeScreen() {
 
   return <main className="min-h-screen"><AppHeader />
     <section className="mx-auto max-w-7xl px-5 pb-8 pt-9 sm:px-8 sm:pt-12"><p className="mb-4 text-sm font-medium uppercase tracking-[.18em] text-[#718077]">Your workspace</p><div className="max-w-3xl"><h1 className="text-5xl font-medium tracking-[-.065em] text-[#17231d] sm:text-7xl">Everything in<br /><em className="font-serif font-normal">one space.</em></h1><p className="mt-5 max-w-lg text-base leading-7 text-[#718077]">Keep project notes, tasks, documents, media, and references together.</p></div><div className="mt-8 flex max-w-xl items-center gap-3 rounded-2xl border border-[#e5e8e2] bg-white px-4 py-3 shadow-sm"><Icon name="search" className="h-5 w-5 text-[#718077]" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Scapes" className="w-full border-0 bg-transparent text-sm outline-none placeholder:text-[#a0aaa3]" /></div></section>
-    <section className="mx-auto max-w-7xl space-y-8 px-5 pb-16 sm:px-8"><div className="border-b border-[#e5e8e2] pb-8"><div className="mb-5"><h2 className="text-xl font-semibold tracking-[-.04em]">Your Scape</h2></div>{personalScape ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><ScapeCard scape={personalScape} index={0} /></div> : <div className="rounded-2xl border border-dashed border-[#cbd3ca] p-6 text-sm text-[#718077]">Create your first Scape to begin.</div>}</div><div><div className="mb-5 flex items-end justify-between"><h2 className="text-xl font-semibold tracking-[-.04em]">Recent Scapes</h2><Link href="/templates" className="hidden text-sm font-medium text-[#315443] sm:block">Browse templates →</Link></div>{recentScapes.length ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{recentScapes.map((scape, index) => <ScapeCard scape={scape} index={index} key={scape.id} />)}<Link href="/create" className="new-scape-card grid min-h-[240px] place-items-center rounded-2xl border border-dashed border-[#cbd3ca] bg-[#f2f4ed] p-6 transition"><div className="text-center"><span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white text-[#315443] shadow-sm"><Icon name="plus" className="h-5 w-5" /></span><p className="mt-3 text-sm font-medium">Start a new Scape</p><p className="mt-1 text-xs text-[#718077]">Blank or template-based</p></div></Link></div> : <div className="rounded-2xl border border-dashed border-[#cbd3ca] bg-[#f2f4ed] p-6"><p className="font-medium">No recent Scapes yet</p><Link href="/create" className="mt-4 inline-flex rounded-lg bg-[#315443] px-4 py-2 text-sm font-medium text-white">Create Scape</Link></div>}</div></section>
+    <section className="mx-auto max-w-7xl space-y-8 px-5 pb-16 sm:px-8"><div className="border-b border-[#e5e8e2] pb-8"><div className="mb-5"><h2 className="text-xl font-semibold tracking-[-.04em]">Your Scape</h2></div>{personalScape ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><ScapeCard scape={personalScape} index={0} /></div> : <div className="rounded-2xl border border-dashed border-[#cbd3ca] p-6 text-sm text-[#718077]">Create your first Scape to begin.</div>}</div><div><div className="mb-5 flex items-end justify-between"><h2 className="text-xl font-semibold tracking-[-.04em]">Recent Scapes</h2><Link href="/templates" className="hidden text-sm font-medium text-[#315443] sm:block">Browse templates →</Link></div>{recentScapes.length ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{recentScapes.map((scape, index) => <ScapeCard scape={scape} index={index} key={scape.id} />)}<Link href="/create" className="new-scape-card grid min-h-[240px] place-items-center rounded-2xl border border-dashed border-[#cbd3ca] bg-[#f2f4ed] p-6 transition"><div className="text-center"><span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white text-[#315443] shadow-sm"><Icon name="plus" className="h-5 w-5" /></span><p className="mt-3 text-sm font-medium">Start a new Scape</p><p className="mt-1 text-xs text-[#718077]">Blank or template-based</p></div></Link></div> : <div className="rounded-2xl border border-dashed border-[#cbd3ca] bg-[#f2f4ed] p-6"><p className="font-medium">No recent Scapes yet</p><Link href="/create" className="mt-4 inline-flex rounded-lg bg-[#315443] px-4 py-2 text-sm font-medium text-white">Create Scape</Link></div>}</div>{archivedScapes.length > 0 && <div className="border-t border-[#e5e8e2] pt-6"><button onClick={() => setShowArchived((visible) => !visible)} className="flex items-center gap-2 text-sm font-medium text-[#718077] hover:text-[#17231d]"><Icon name="archive" className="h-4 w-4" />Archived Scapes <span className="text-xs">({archivedScapes.length})</span><span>{showArchived ? "−" : "+"}</span></button>{showArchived && <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{archivedScapes.map((scape) => <div key={scape.id} className="rounded-2xl border border-[#e5e8e2] bg-white p-4"><p className="truncate font-medium">{scape.title}</p><p className="mt-1 truncate text-sm text-[#718077]">{scape.description || "Archived Scape"}</p><button onClick={() => void saveScape({ ...scape, archived: false, activity: [{ id: `activity-${Date.now()}`, action: "Scape restored", detail: scape.title, time: new Date().toISOString() }, ...scape.activity] })} className="mt-4 rounded-lg border px-3 py-2 text-sm hover:bg-[#edf0df]">Restore</button></div>)}</div>}</div>}</section>
     <FeedbackForm />
   </main>;
 }

@@ -1,5 +1,5 @@
 export type ResourceType = "note" | "task" | "file" | "image" | "video" | "audio" | "link";
-export type Resource = { id: string; title: string; type: ResourceType; detail: string; date: string; done?: boolean; starred?: boolean; content?: string; downloadUrl?: string; mimeType?: string };
+export type Resource = { id: string; title: string; type: ResourceType; detail: string; date: string; done?: boolean; starred?: boolean; group?: string; content?: string; downloadUrl?: string; mimeType?: string };
 export type Activity = { id: string; action: string; detail: string; time: string; actorId?: string; actorName?: string; actorEmail?: string };
 export type BrowserActivity = { id: string; type: string; time: string; url?: string; target?: string; detail?: string; sessionId: string };
 export type BrowserTabSnapshot = {
@@ -32,7 +32,7 @@ export type BrowserState = {
 };
 export type CollaborationPermission = "view" | "edit";
 export type Collaborator = { id: string; name: string; email: string; permission: CollaborationPermission; pending?: boolean };
-export type Scape = { id: string; title: string; description: string; template: string; cover: string; updated: string; createdAt?: string; updatedAt?: string; resources: Resource[]; activity: Activity[]; ownerId?: string; collaborators?: Collaborator[]; browser?: BrowserState; browserContexts?: Record<string, string> };
+export type Scape = { id: string; title: string; description: string; template: string; cover: string; coverPosition?: string; coverZoom?: number; updated: string; createdAt?: string; updatedAt?: string; resources: Resource[]; activity: Activity[]; starred?: boolean; archived?: boolean; hiddenSections?: ResourceType[]; ownerId?: string; collaborators?: Collaborator[]; browser?: BrowserState; browserContexts?: Record<string, string> };
 export type Template = { name: string; icon: string; color: string; description: string; sections: string[] };
 export const templates = [
   { name: "Blank Scape", icon: "＋", color: "#eceee9", description: "A clear, open space for whatever comes next.", sections: [] },
