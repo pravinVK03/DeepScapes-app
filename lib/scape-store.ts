@@ -14,7 +14,9 @@ function dedupeScapes(scapes: Scape[]) {
   const unique = new Map<string, Scape>();
   for (const scape of scapes) {
     const previous = unique.get(scape.id);
-    if (!previous || new Date(scape.updatedAt || 0).getTime() >= new Date(previous.updatedAt || 0).getTime()) unique.set(scape.id, scape);
+    // Preserve the first item on equal timestamps. Remote full Scapes are
+    // intentionally placed before their lightweight dashboard summaries.
+    if (!previous || new Date(scape.updatedAt || 0).getTime() > new Date(previous.updatedAt || 0).getTime()) unique.set(scape.id, scape);
   }
   return [...unique.values()];
 }

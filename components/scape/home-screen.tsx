@@ -28,7 +28,8 @@ function dateLabel(prefix: "Created" | "Updated", value?: string) {
 
 function ScapeCard({ scape, index, canEdit, onStar, onShare, onArchive, onDelete }: { scape: Scape; index: number; canEdit: boolean; onStar: () => void; onShare: () => void; onArchive: () => void; onDelete: () => Promise<void> }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const cover = { "--scape-cover": scape.cover.startsWith("data:") ? `url(${scape.cover})` : scape.cover, backgroundPosition: scape.coverPosition || "center", backgroundSize: scape.coverZoom && scape.coverZoom > 1 ? `${scape.coverZoom * 100}% auto` : "cover", backgroundRepeat: "no-repeat" } as CSSProperties;
+  const coverIsImage = scape.cover.startsWith("data:") || /^https?:/i.test(scape.cover);
+  const cover = { "--scape-cover": coverIsImage ? `url("${scape.cover}")` : scape.cover, backgroundPosition: scape.coverPosition || "center", backgroundSize: scape.coverZoom && scape.coverZoom > 1 ? `${scape.coverZoom * 100}% auto` : "cover", backgroundRepeat: "no-repeat" } as CSSProperties;
   return <article className="scape-card rise overflow-visible rounded-2xl border border-[#e5e8e2] bg-white shadow-[0_8px_30px_rgba(23,35,29,.035)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(23,35,29,.09)]" style={{ animationDelay: `${index * 70}ms` }}>
     <Link href={`/workspace/${scape.id}`} className="group block overflow-hidden rounded-2xl">
     <div className="scape-card-cover h-36 p-4" style={cover}><div className="flex h-full items-end"><span className="rounded-full bg-black/30 px-3 py-1 text-xs text-white backdrop-blur">{scape.template}</span></div></div>
