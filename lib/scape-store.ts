@@ -10,6 +10,15 @@ let remoteScapesRequest: Promise<Scape[] | undefined> | undefined;
 let lastRemoteScapesSync = 0;
 const remoteSyncWindowMs = 5 * 60 * 1000;
 
+function dedupeScapes(scapes: Scape[]) {
+  const unique = new Map<string, Scape>();
+  for (const scape of scapes) {
+    const previous = unique.get(scape.id);
+    if (!previous || new Date(scape.updatedAt || 0).getTime() >= new Date(previous.updatedAt || 0).getTime()) unique.set(scape.id, scape);
+  }
+  return [...unique.values()];
+}
+
 export function getScapes(): Scape[] {
   if (typeof window === "undefined") return starterScapes;
   let saved: string | null;
@@ -31,8 +40,8 @@ export function getScapes(): Scape[] {
 }
 
 export function saveScapes(scapes: Scape[]) {
-  cachedScapes = scapes;
-  cachedRaw = JSON.stringify(scapes);
+  cachedScapes = dedupeScapes(scapes);
+  cachedRaw = JSON.stringify(cachedScapes);
   try { localStorage.setItem(key, cachedRaw); } catch { /* Continue with in-memory data and cloud persistence. */ }
   window.dispatchEvent(new Event(changeEvent));
 }
@@ -59,8 +68,8 @@ export async function persistScape(scape: Scape) {
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(scape),
   });
-  if (!response.ok) throw new Error("DeepScapes could not save this change. Check your database connection and try again.");
-  const data = await response.json().catch(() => undefined) as { scape?: Scape } | undefined;
+  const data = await response.json().catch(() => undefined) as { scape?: Scape; error?: string } | undefined;
+  if (!response.ok) throw new Error(data?.error || "DeepScapes could not save this change. Check your database connection and try again.");
   // Replace locally-held data URLs with the server's short-lived Storage URL
   // as soon as persistence completes, so image bytes never linger in cache.
   if (data?.scape) saveScapes([data.scape, ...getScapes().filter((item) => item.id !== data.scape!.id)]);
@@ -106,4 +115,13 @@ function subscribe(onStoreChange: () => void) { window.addEventListener(changeEv
 const serverSnapshot: Scape[] = [];
 export function useScapes() { return useSyncExternalStore(subscribe, getScapes, () => serverSnapshot); }
 export function useScape(id: string) { const scapes = useScapes(); return scapes.find((scape) => scape.id === id); }
-export function deleteScape(id: string) { saveScapes(getScapes().filter((scape) => scape.id !== id)); void getBrowserSupabase()?.auth.getSession().then(({ data }) => fetch(`/api/scapes?id=${encodeURIComponent(id)}`, { method: "DELETE", headers: data.session?.access_token ? { Authorization: `Bearer ${data.session.access_token}` } : {} }).catch(() => undefined)); }
+export async function deleteScape(id: string) {
+  const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
+  const response = await fetch(`/api/scapes?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).catch(() => undefined);
+  const data = await response?.json().catch(() => undefined) as { error?: string } | undefined;
+  if (!response?.ok) throw new Error(data?.error || "DeepScapes could not delete this Scape. Please try again.");
+  saveScapes(getScapes().filter((scape) => scape.id !== id));
+}

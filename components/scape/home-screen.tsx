@@ -26,7 +26,7 @@ function dateLabel(prefix: "Created" | "Updated", value?: string) {
   return `${prefix} ${new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value))}`;
 }
 
-function ScapeCard({ scape, index, canEdit, onStar, onShare, onArchive, onDelete }: { scape: Scape; index: number; canEdit: boolean; onStar: () => void; onShare: () => void; onArchive: () => void; onDelete: () => void }) {
+function ScapeCard({ scape, index, canEdit, onStar, onShare, onArchive, onDelete }: { scape: Scape; index: number; canEdit: boolean; onStar: () => void; onShare: () => void; onArchive: () => void; onDelete: () => Promise<void> }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const cover = { "--scape-cover": scape.cover.startsWith("data:") ? `url(${scape.cover})` : scape.cover, backgroundPosition: scape.coverPosition || "center", backgroundSize: scape.coverZoom && scape.coverZoom > 1 ? `${scape.coverZoom * 100}% auto` : "cover", backgroundRepeat: "no-repeat" } as CSSProperties;
   return <article className="scape-card rise overflow-visible rounded-2xl border border-[#e5e8e2] bg-white shadow-[0_8px_30px_rgba(23,35,29,.035)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(23,35,29,.09)]" style={{ animationDelay: `${index * 70}ms` }}>
@@ -71,7 +71,7 @@ function FeedbackForm() {
 }
 
 export default function HomeScreen() {
-  const scapes = useScapes(); const { user } = useAuth(); const [query, setQuery] = useState(""); const [showArchived, setShowArchived] = useState(false); const [showStarred, setShowStarred] = useState(false); const [sharingScape, setSharingScape] = useState<Scape>(); const loadedUser = useRef<string | undefined>(undefined); const searchRef = useRef<HTMLInputElement>(null);
+  const scapes = useScapes(); const { user } = useAuth(); const [query, setQuery] = useState(""); const [showArchived, setShowArchived] = useState(false); const [showStarred, setShowStarred] = useState(false); const [sharingScape, setSharingScape] = useState<Scape>(); const [notice, setNotice] = useState<{ text: string; tone: "success" | "error" }>(); const loadedUser = useRef<string | undefined>(undefined); const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!user) { loadedUser.current = undefined; return; }
     if (loadedUser.current === user.id) return;
@@ -108,7 +108,8 @@ export default function HomeScreen() {
   function canEdit(scape: Scape) { return scape.ownerId === currentUser.id || scape.collaborators?.some((person) => (person.id === currentUser.id || person.email === currentUser.email) && person.permission === "edit") === true; }
   function star(scape: Scape) { const now = new Date().toISOString(); void saveScape({ ...scape, starred: !scape.starred, activity: [{ id: newId("activity"), action: scape.starred ? "Scape unstarred" : "Scape starred", detail: scape.title, time: now }, ...scape.activity] }); }
   function archive(scape: Scape) { if (window.confirm(`Archive ${scape.title}? You can restore it later from Archived Scapes.`)) { const now = new Date().toISOString(); void saveScape({ ...scape, archived: true, activity: [{ id: newId("activity"), action: "Scape archived", detail: scape.title, time: now }, ...scape.activity] }); } }
-  function remove(scape: Scape) { if (window.confirm(`Delete ${scape.title}? This cannot be undone.`)) deleteScape(scape.id); }
+  function showNotice(text: string, tone: "success" | "error" = "success") { setNotice({ text, tone }); window.setTimeout(() => setNotice(undefined), 3200); }
+  async function remove(scape: Scape) { if (!window.confirm(`Delete ${scape.title}? This cannot be undone.`)) return; try { await deleteScape(scape.id); showNotice(`${scape.title} deleted.`); } catch (cause) { showNotice(cause instanceof Error ? cause.message : "DeepScapes could not delete this Scape.", "error"); } }
   function cardActions(scape: Scape) { return { canEdit: canEdit(scape), onStar: () => star(scape), onShare: () => setSharingScape(scape), onArchive: () => archive(scape), onDelete: () => remove(scape) }; }
   const searchResultCount = [personalScape, ...recentScapes, ...archivedScapes].filter(Boolean).length;
   const searching = Boolean(query.trim());
@@ -122,6 +123,7 @@ export default function HomeScreen() {
       {starredScapes.length > 0 && <div className="border-t border-[#e5e8e2] pt-6"><button onClick={() => setShowStarred((visible) => !visible)} className="flex items-center gap-2 text-sm font-medium text-[#718077] hover:text-[#17231d]"><Icon name="star" className="h-4 w-4 text-[#c99a17]" />Starred Scapes <span className="text-xs">({starredScapes.length})</span><span>{showStarred ? "−" : "+"}</span></button>{showStarred && <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{starredScapes.map((scape, index) => <ScapeCard scape={scape} index={index} key={scape.id} {...cardActions(scape)} />)}</div>}</div>}
       {archivedScapes.length > 0 && <div className="border-t border-[#e5e8e2] pt-6"><button onClick={() => setShowArchived((visible) => !visible)} className="flex items-center gap-2 text-sm font-medium text-[#718077] hover:text-[#17231d]"><Icon name="archive" className="h-4 w-4" />Archived Scapes <span className="text-xs">({archivedScapes.length})</span><span>{showArchived ? "−" : "+"}</span></button>{showArchived && <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{archivedScapes.map((scape) => <div key={scape.id} className="rounded-2xl border border-[#e5e8e2] bg-white p-4"><p className="truncate font-medium">{scape.title}</p><p className="mt-1 truncate text-sm text-[#718077]">{scape.description || "Archived Scape"}</p>{canEdit(scape) && <div className="mt-4 flex flex-wrap gap-2"><button onClick={() => { const now = new Date().toISOString(); void saveScape({ ...scape, archived: false, activity: [{ id: newId("activity"), action: "Scape restored", detail: scape.title, time: now }, ...scape.activity] }); }} className="rounded-lg border px-3 py-2 text-sm hover:bg-[#edf0df]">Restore</button>{scape.ownerId === currentUser.id && <button onClick={() => remove(scape)} className="rounded-lg border border-[#e2b4ae] px-3 py-2 text-sm text-[#a95b54] hover:bg-[#f7e8e5]">Delete</button>}</div>}</div>)}</div>}</div>}
     </section>{sharingScape && <ShareScape scape={sharingScape} close={() => setSharingScape(undefined)} save={saveScape} />}
+    {notice && <div role="status" aria-live="polite" className={`fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full px-4 py-3 text-sm font-medium text-white shadow-xl ${notice.tone === "error" ? "bg-[#9f4f47]" : "bg-[#315443]"}`}><span className="grid h-5 w-5 place-items-center rounded-full bg-white/20">{notice.tone === "error" ? "!" : "✓"}</span>{notice.text}</div>}
     <FeedbackForm />
   </main>;
 }
