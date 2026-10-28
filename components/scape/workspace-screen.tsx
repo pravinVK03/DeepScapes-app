@@ -74,11 +74,11 @@ export default function WorkspaceScreen() {
   const done = useMemo(() => scape?.resources.filter((item) => item.type === "task" && item.done).length ?? 0, [scape]);
   const browserSessions = useMemo(() => groupWebSessions(webLogs, scape?.browser?.activeSessionId, scape?.browser?.sessions, scape?.browser?.activeSessionName), [scape?.browser?.activeSessionId, scape?.browser?.activeSessionName, scape?.browser?.sessions, webLogs]);
   useEffect(() => {
-    if (!user || (scape && !scape.summary)) return;
+    if (!user) return;
     let cancelled = false;
     void loadRemoteScape(params.id).then((loaded) => { if (!loaded && !cancelled) setLoadError({ id: params.id, message: "DeepScapes could not load this Scape. Please try again." }); });
     return () => { cancelled = true; };
-  }, [loadAttempt, params.id, scape, user]);
+  }, [loadAttempt, params.id, user]);
   useEffect(() => {
     if (!scape) return;
     const timer = window.setTimeout(() => setWebLogs(scape.browser?.activity || []), 0);
