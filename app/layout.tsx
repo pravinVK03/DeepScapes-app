@@ -7,6 +7,9 @@ import { AuthProvider } from "@/components/auth/auth-provider";
 export const metadata: Metadata = {
   title: "DeepScapes",
   description: "A calm, project-centric workspace.",
+  verification: {
+    google: "zB6ZqMBsQ3dhHpen4ot1MRDm3Cr4L5dViRjefLqSIww",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
