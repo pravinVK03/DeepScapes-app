@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "migrate:legacy-covers": "node scripts/migrate-legacy-covers.mjs"
+    "migrate:legacy-covers": "node scripts/migrate-legacy-covers.mjs",
+    "migrate:legacy-browser": "node scripts/migrate-legacy-browser.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

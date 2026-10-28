@@ -85,7 +85,7 @@ export async function loadRemoteScapes({ force = false }: { force?: boolean } = 
   remoteScapesRequest = (async () => {
     const session = (await getBrowserSupabase()?.auth.getSession())?.data.session;
     const token = session?.access_token;
-    const syncKey = session ? `deepscapes-last-remote-sync:v2:${session.user.id}` : undefined;
+    const syncKey = session ? `deepscapes-last-remote-sync:v3:${session.user.id}` : undefined;
     const persisted = syncKey ? Number(window.sessionStorage.getItem(syncKey) || 0) : 0;
     if (!force && persisted && Date.now() - persisted < remoteSyncWindowMs && getScapes().length) { lastRemoteScapesSync = persisted; return cachedScapes; }
     const response = await fetch("/api/scapes", { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }).catch(() => undefined);
