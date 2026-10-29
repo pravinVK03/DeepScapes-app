@@ -8,24 +8,25 @@ type AuthValue = { user: User | null; loading: boolean; profileReady: boolean; i
 const AuthContext = createContext<AuthValue>({ user: null, loading: true, profileReady: false, initializationFailed: false, signOut: async () => undefined });
 
 type InitializationState = "ready" | "pending" | "failed";
-const initializationRequests = new Map<string, Promise<InitializationState>>();
+type InitializationResult = { state: InitializationState; createdPersonalScape: boolean };
+const initializationRequests = new Map<string, Promise<InitializationResult>>();
 
-async function initialize(session: Session | null) {
-  if (!session) return "ready" as const;
+async function initialize(session: Session | null): Promise<InitializationResult> {
+  if (!session) return { state: "ready", createdPersonalScape: false };
   const existing = initializationRequests.get(session.user.id);
   if (existing) return existing;
-  const request = (async () => {
+  const request: Promise<InitializationResult> = (async (): Promise<InitializationResult> => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const response = await fetch("/api/auth/initialize", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
         if (response.ok) {
-          const data = await response.json().catch(() => ({})) as { profilePending?: boolean; scapeReady?: boolean };
-          return data.profilePending ? "pending" : data.scapeReady ? "ready" : "failed";
+          const data = await response.json().catch(() => ({})) as { profilePending?: boolean; scapeReady?: boolean; createdPersonalScape?: boolean };
+          return { state: (data.profilePending ? "pending" : data.scapeReady ? "ready" : "failed") as InitializationState, createdPersonalScape: data.createdPersonalScape === true };
         }
-        if (response.status === 401 || response.status === 403 || response.status === 429) return "failed";
+        if (response.status === 401 || response.status === 403 || response.status === 429) return { state: "failed", createdPersonalScape: false };
       } catch { /* Retry once for a transient network interruption. */ }
     }
-    return "failed";
+    return { state: "failed", createdPersonalScape: false };
   })();
   initializationRequests.set(session.user.id, request);
   try { return await request; } finally { initializationRequests.delete(session.user.id); }
@@ -54,8 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const readyKey = `deepscapes-profile-ready:v2:${next.user.id}`;
       const alreadyReady = window.sessionStorage.getItem(readyKey) === "true";
       if (alreadyReady) { setProfileReady(true); return; }
-      void initialize(next).then((state) => {
+      void initialize(next).then(({ state, createdPersonalScape }) => {
         if (state === "ready") window.sessionStorage.setItem(readyKey, "true");
+        if (createdPersonalScape) window.sessionStorage.setItem(`deepscapes-show-help:${next.user.id}`, "true");
         if (version === requestVersion.current) {
           // Do not show a newly authenticated user an empty dashboard before
           // their durable profile and personal Scape are confirmed. A failed

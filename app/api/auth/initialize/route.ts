@@ -94,6 +94,7 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (scapeReadError) return response({ error: scapeReadError.message }, 500);
 
+  let createdPersonalScape = false;
   if (!existingScape) {
     const { error } = await supabase.from("scapes").insert({
       id: defaultScape.id,
@@ -112,6 +113,7 @@ export async function POST(request: Request) {
     // A concurrent initialization request may have inserted the same stable
     // id. Read it again below and repair it just like any legacy partial row.
     if (error && error.code !== "23505") return response({ error: error.message }, 500);
+    createdPersonalScape = !error;
   }
 
   const { data: durableScape, error: durableReadError } = await supabase
@@ -162,5 +164,5 @@ export async function POST(request: Request) {
     }, { onConflict: "scape_id,id", ignoreDuplicates: true }),
   ]);
   if (collaboratorResult.error || activityResult.error) return response({ error: collaboratorResult.error?.message || activityResult.error?.message || "Could not finish setting up your personal Scape." }, 500);
-  return response({ username, scapeReady: true });
+  return response({ username, scapeReady: true, createdPersonalScape });
 }

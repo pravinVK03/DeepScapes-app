@@ -66,8 +66,9 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     const token = (await supabase?.auth.getSession())?.data.session?.access_token;
     if (!token) { setMessage("Your session expired. Open the email link again to finish creating your account."); return false; }
     const response = await fetch("/api/auth/initialize", { method: "POST", headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }).catch(() => undefined);
-    const data = await response?.json().catch(() => undefined) as { error?: string; profilePending?: boolean; scapeReady?: boolean } | undefined;
+    const data = await response?.json().catch(() => undefined) as { error?: string; profilePending?: boolean; scapeReady?: boolean; createdPersonalScape?: boolean } | undefined;
     if (!response?.ok || data?.profilePending || !data?.scapeReady) { setMessage(data?.error || "We could not finish creating your personal Scape. Please try again."); return false; }
+    if (data.createdPersonalScape && user) window.sessionStorage.setItem(`deepscapes-show-help:${user.id}`, "true");
     return true;
   }
 
