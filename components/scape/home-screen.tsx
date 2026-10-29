@@ -72,9 +72,9 @@ function FeedbackForm() {
 }
 
 export default function HomeScreen() {
-  const scapes = useScapes(); const { user } = useAuth(); const [query, setQuery] = useState(""); const [showArchived, setShowArchived] = useState(false); const [showStarred, setShowStarred] = useState(false); const [sharingScape, setSharingScape] = useState<Scape>(); const [notice, setNotice] = useState<{ text: string; tone: "success" | "error" }>(); const loadedUser = useRef<string | undefined>(undefined); const searchRef = useRef<HTMLInputElement>(null);
+  const scapes = useScapes(); const { user, profileReady, initializationFailed } = useAuth(); const [query, setQuery] = useState(""); const [showArchived, setShowArchived] = useState(false); const [showStarred, setShowStarred] = useState(false); const [sharingScape, setSharingScape] = useState<Scape>(); const [notice, setNotice] = useState<{ text: string; tone: "success" | "error" }>(); const loadedUser = useRef<string | undefined>(undefined); const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (!user) { loadedUser.current = undefined; return; }
+    if (!user || !profileReady) { loadedUser.current = undefined; return; }
     if (loadedUser.current === user.id) return;
     loadedUser.current = user.id;
     // Render the cached workspace immediately, then reconcile it quietly.
@@ -84,7 +84,7 @@ export default function HomeScreen() {
       // intermittent network or server failure.
       if (remoteScapes) saveScapes(remoteScapes);
     });
-  }, [user]);
+  }, [profileReady, user]);
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); searchRef.current?.focus(); }
@@ -105,6 +105,7 @@ export default function HomeScreen() {
   // Keep the workspace visible during a refresh. A full-screen loading state
   // here made normal navigation feel like the app had stopped responding.
   if (!user) return null;
+  if (!profileReady) return <main className="min-h-screen"><AppHeader /><section className="mx-auto max-w-7xl px-5 py-16 sm:px-8"><p className="text-sm font-medium uppercase tracking-[.18em] text-[#718077]">Setting up your workspace</p><h1 className="mt-3 text-4xl font-medium tracking-[-.055em] text-[#17231d]">{initializationFailed ? "Your workspace needs one more try." : "Creating your personal Scape…"}</h1><p role="status" aria-live="polite" className="mt-3 text-sm text-[#718077]">{initializationFailed ? "Nothing has been lost. Retry setup to finish creating your personal Scape." : "This only takes a moment."}</p>{initializationFailed && <button type="button" onClick={() => window.location.reload()} className="mt-6 rounded-lg bg-[#315443] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#254235]">Retry setup</button>}</section></main>;
   const currentUser = user;
   function canEdit(scape: Scape) { return scape.ownerId === currentUser.id || scape.collaborators?.some((person) => (person.id === currentUser.id || person.email === currentUser.email) && person.permission === "edit") === true; }
   function star(scape: Scape) { const now = new Date().toISOString(); void saveScape({ ...scape, starred: !scape.starred, activity: [{ id: newId("activity"), action: scape.starred ? "Scape unstarred" : "Scape starred", detail: scape.title, time: now }, ...scape.activity] }); }
