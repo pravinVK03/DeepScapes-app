@@ -13,11 +13,27 @@ export function requestIdentity(request: Request, userId?: string) {
   return `ip:${forwarded || request.headers.get("x-real-ip") || "anonymous"}`;
 }
 
+function pruneStoreIfNeeded() {
+  if (store.size < 2000) return;
+  const now = Date.now();
+  for (const [k, v] of store.entries()) {
+    if (v.resetAt <= now) store.delete(k);
+  }
+}
+
 function localRateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
-  const now = Date.now(); const current = store.get(key);
-  if (!current || current.resetAt <= now) { store.set(key, { count: 1, resetAt: now + windowMs }); return { allowed: true, remaining: limit - 1, retryAfter: 0 }; }
-  if (current.count >= limit) return { allowed: false, remaining: 0, retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)) };
-  current.count += 1; return { allowed: true, remaining: limit - current.count, retryAfter: 0 };
+  pruneStoreIfNeeded();
+  const now = Date.now();
+  const current = store.get(key);
+  if (!current || current.resetAt <= now) {
+    store.set(key, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, remaining: limit - 1, retryAfter: 0 };
+  }
+  if (current.count >= limit) {
+    return { allowed: false, remaining: 0, retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)) };
+  }
+  current.count += 1;
+  return { allowed: true, remaining: limit - current.count, retryAfter: 0 };
 }
 
 async function redisRateLimit(key: string, limit: number, windowMs: number): Promise<RateLimitResult | undefined> {
@@ -28,20 +44,31 @@ async function redisRateLimit(key: string, limit: number, windowMs: number): Pro
       headers: { Authorization: `Bearer ${redisToken}`, "Content-Type": "application/json" },
       body: JSON.stringify([["INCR", key], ["PEXPIRE", key, windowMs, "NX"], ["PTTL", key]]),
       cache: "no-store",
+      signal: AbortSignal.timeout(2000),
     });
     const results = await response.json() as { result?: number }[];
-    const count = Number(results[0]?.result); const ttl = Number(results[2]?.result);
+    const count = Number(results[0]?.result);
+    const ttl = Number(results[2]?.result);
     if (!response.ok || !Number.isFinite(count)) return undefined;
-    return { allowed: count <= limit, remaining: Math.max(0, limit - count), retryAfter: count <= limit ? 0 : Math.max(1, Math.ceil(Math.max(ttl, 1000) / 1000)) };
-  } catch { return undefined; }
+    return {
+      allowed: count <= limit,
+      remaining: Math.max(0, limit - count),
+      retryAfter: count <= limit ? 0 : Math.max(1, Math.ceil(Math.max(ttl, 1000) / 1000)),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
-/** Uses Upstash Redis when configured; the local fallback still protects a single instance during development. */
+/** Uses Upstash Redis when configured; the local fallback protects a single instance during development. */
 export async function rateLimit(request: Request, scope: string, limit: number, windowMs: number, userId?: string) {
   const key = `deepscapes:rl:${scope}:${requestIdentity(request, userId)}`;
   return await redisRateLimit(key, limit, windowMs) ?? localRateLimit(key, limit, windowMs);
 }
 
 export function rateLimited(retryAfter: number) {
-  return Response.json({ error: "Too many requests. Please wait before trying again.", retryAfter }, { status: 429, headers: { "Retry-After": String(retryAfter), "Cache-Control": "no-store" } });
+  return Response.json(
+    { error: "Too many requests. Please wait before trying again.", retryAfter },
+    { status: 429, headers: { "Retry-After": String(retryAfter), "Cache-Control": "no-store" } },
+  );
 }

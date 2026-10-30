@@ -28,18 +28,36 @@ async function getEditableScape(request: Request, scapeId: string) {
   if (!user) return { error: "Sign in required", status: 401 } as const;
   if (!scapeId) return { error: "A Scape is required", status: 400 } as const;
   const supabase = getSupabase();
-  const { data: row, error } = await supabase.from("scapes").select("payload").eq("id", scapeId).maybeSingle();
+  const [{ data: row, error }, { data: collabs }] = await Promise.all([
+    supabase.from("scapes").select("owner_id, payload").eq("id", scapeId).maybeSingle(),
+    supabase.from("scape_collaborators").select("user_id, email, permission").eq("scape_id", scapeId),
+  ]);
   const scape = row?.payload as Scape | undefined;
-  if (error || !scape || !canEdit(scape, user.id, user.email)) return { error: "Editor access is required", status: 403 } as const;
-  return { supabase, user, scape } as const;
+  const ownerId = row?.owner_id || scape?.ownerId;
+  const isOwner = ownerId === user.id;
+  const isCollabEditor = (collabs || []).some(
+    (c) => (c.user_id === user.id || (user.email && c.email?.toLowerCase() === user.email.toLowerCase())) && c.permission === "edit"
+  );
+  if (error || (!row && !scape)) return { error: "Scape not found", status: 404 } as const;
+  if (!isOwner && !isCollabEditor && (!scape || !canEdit(scape, user.id, user.email))) {
+    return { error: "Editor access is required", status: 403 } as const;
+  }
+  return { supabase, user, scape: { ...(scape || {}), id: scapeId, ownerId } as Scape } as const;
 }
 
+let bucketEnsured = false;
+
 async function ensureBucket() {
+  if (bucketEnsured) return undefined;
   const supabase = getSupabase();
   const { error: existingError } = await supabase.storage.getBucket(bucket);
-  if (!existingError) return undefined;
+  if (!existingError) {
+    bucketEnsured = true;
+    return undefined;
+  }
   const { error: createError } = await supabase.storage.createBucket(bucket, { public: false, fileSizeLimit: 20 * 1024 * 1024 });
   if (createError && !/already exists/i.test(createError.message)) return createError.message;
+  bucketEnsured = true;
   return undefined;
 }
 
@@ -50,7 +68,7 @@ export async function POST(request: Request) {
     if (!body) return Response.json({ error: "Invalid upload request" }, { status: 400 });
     const access = await getEditableScape(request, body.scapeId ?? "");
     if ("error" in access) return Response.json({ error: access.error }, { status: access.status });
-    const quota = await rateLimit(request, body.action === "prepare" ? "upload-prepare" : "upload-complete", body.action === "prepare" ? 12 : 24, 60 * 60 * 1000, access.user.id);
+    const quota = await rateLimit(request, body.action === "prepare" ? "upload-prepare" : "upload-complete", body.action === "prepare" ? 250 : 500, 60 * 60 * 1000, access.user.id);
     if (!quota.allowed) return rateLimited(quota.retryAfter);
     const bucketError = await ensureBucket();
     if (bucketError) return Response.json({ error: `Storage setup failed: ${bucketError}` }, { status: 500 });
@@ -78,7 +96,7 @@ export async function POST(request: Request) {
   if (!(file instanceof File)) return Response.json({ error: "A file is required" }, { status: 400 });
   const access = await getEditableScape(request, scapeId);
   if ("error" in access) return Response.json({ error: access.error }, { status: access.status });
-  const quota = await rateLimit(request, "upload-legacy", 8, 60 * 60 * 1000, access.user.id);
+  const quota = await rateLimit(request, "upload-legacy", 60, 60 * 60 * 1000, access.user.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (file.size > 20 * 1024 * 1024) return Response.json({ error: "Files must be smaller than 20 MB." }, { status: 413 });
   const bucketError = await ensureBucket();

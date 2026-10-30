@@ -7,6 +7,7 @@ const changeEvent = "deepscapes-change";
 let cachedRaw: string | null | undefined;
 let cachedScapes: Scape[] = starterScapes;
 let remoteScapesRequest: Promise<Scape[] | undefined> | undefined;
+const remoteScapeRequests = new Map<string, Promise<Scape | undefined>>();
 let lastRemoteScapesSync = 0;
 const remoteSyncWindowMs = 5 * 60 * 1000;
 
@@ -14,9 +15,37 @@ function dedupeScapes(scapes: Scape[]) {
   const unique = new Map<string, Scape>();
   for (const scape of scapes) {
     const previous = unique.get(scape.id);
-    // Preserve the first item on equal timestamps. Remote full Scapes are
-    // intentionally placed before their lightweight dashboard summaries.
-    if (!previous || new Date(scape.updatedAt || 0).getTime() > new Date(previous.updatedAt || 0).getTime()) unique.set(scape.id, scape);
+    if (!previous) {
+      unique.set(scape.id, scape);
+      continue;
+    }
+    // If incoming is a summary but we already have a full scape cached,
+    // preserve the full resources, activity, collaborators, and browser data!
+    if (scape.summary && !previous.summary) {
+      unique.set(scape.id, {
+        ...previous,
+        ...scape,
+        resources: (previous.resources && previous.resources.length > 0) ? previous.resources : (scape.resources || []),
+        activity: (previous.activity && previous.activity.length > 0) ? previous.activity : (scape.activity || []),
+        collaborators: (previous.collaborators && previous.collaborators.length > 0) ? previous.collaborators : (scape.collaborators || []),
+        browser: previous.browser || scape.browser,
+        summary: false,
+      });
+      continue;
+    }
+    // If incoming is full and previous is a summary, replace with the incoming full scape
+    if (!scape.summary && previous.summary) {
+      unique.set(scape.id, {
+        ...previous,
+        ...scape,
+        summary: false,
+      });
+      continue;
+    }
+    // Both are full or both are summary: keep the newer or preserve first on equal timestamps
+    if (new Date(scape.updatedAt || 0).getTime() >= new Date(previous.updatedAt || 0).getTime()) {
+      unique.set(scape.id, scape);
+    }
   }
   return [...unique.values()];
 }
@@ -63,7 +92,10 @@ export function newId(prefix: string) {
   const random = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${prefix}-${random}`;
 }
-export async function persistScape(scape: Scape) {
+
+const persistQueues = new Map<string, { inFlight: boolean; pending?: Scape }>();
+
+async function executePersist(scape: Scape) {
   const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
   const response = await fetch("/api/scapes", {
     method: "POST",
@@ -72,10 +104,34 @@ export async function persistScape(scape: Scape) {
   });
   const data = await response.json().catch(() => undefined) as { scape?: Scape; error?: string } | undefined;
   if (!response.ok) throw new Error(data?.error || "DeepScapes could not save this change. Check your database connection and try again.");
-  // Replace locally-held data URLs with the server's short-lived Storage URL
-  // as soon as persistence completes, so image bytes never linger in cache.
   if (data?.scape) saveScapes([data.scape, ...getScapes().filter((item) => item.id !== data.scape!.id)]);
 }
+
+export async function persistScape(scape: Scape): Promise<void> {
+  let queue = persistQueues.get(scape.id);
+  if (!queue) {
+    queue = { inFlight: false };
+    persistQueues.set(scape.id, queue);
+  }
+  if (queue.inFlight) {
+    queue.pending = scape;
+    return;
+  }
+  queue.inFlight = true;
+  try {
+    await executePersist(scape);
+  } finally {
+    queue.inFlight = false;
+    const next = queue.pending;
+    queue.pending = undefined;
+    if (next) {
+      void persistScape(next);
+    } else {
+      persistQueues.delete(scape.id);
+    }
+  }
+}
+
 export async function loadRemoteScapes({ force = false }: { force?: boolean } = {}): Promise<Scape[] | undefined> {
   // Route changes can mount the home screen more than once. Share an in-flight
   // request and reuse a very recent result so navigation never creates a burst
@@ -102,17 +158,31 @@ export async function loadRemoteScapes({ force = false }: { force?: boolean } = 
   })();
   try { return await remoteScapesRequest; } finally { remoteScapesRequest = undefined; }
 }
+
 export async function loadRemoteScape(id: string): Promise<Scape | undefined> {
-  const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
-  const response = await fetch(`/api/scapes?id=${encodeURIComponent(id)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }).catch(() => undefined);
-  if (!response?.ok) return undefined;
+  const existingInFlight = remoteScapeRequests.get(id);
+  if (existingInFlight) return existingInFlight;
+
+  const request = (async () => {
+    const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
+    const response = await fetch(`/api/scapes?id=${encodeURIComponent(id)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }).catch(() => undefined);
+    if (!response?.ok) return undefined;
+    try {
+      const data = await response.json() as { scape?: Scape };
+      if (!data?.scape) return undefined;
+      saveScapes([data.scape, ...getScapes().filter((scape) => scape.id !== id)]);
+      return data.scape;
+    } catch { return undefined; }
+  })();
+
+  remoteScapeRequests.set(id, request);
   try {
-    const data = await response.json() as { scape?: Scape };
-    if (!data.scape) return undefined;
-    saveScapes([data.scape, ...getScapes().filter((scape) => scape.id !== id)]);
-    return data.scape;
-  } catch { return undefined; }
+    return await request;
+  } finally {
+    remoteScapeRequests.delete(id);
+  }
 }
+
 function subscribe(onStoreChange: () => void) { window.addEventListener(changeEvent, onStoreChange); return () => window.removeEventListener(changeEvent, onStoreChange); }
 const serverSnapshot: Scape[] = [];
 export function useScapes() { return useSyncExternalStore(subscribe, getScapes, () => serverSnapshot); }

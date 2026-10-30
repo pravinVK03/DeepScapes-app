@@ -53,10 +53,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // v2 also verifies the default Scape. The earlier key only meant the
       // profile existed, leaving partially provisioned accounts unrepaired.
       const readyKey = `deepscapes-profile-ready:v2:${next.user.id}`;
-      const alreadyReady = window.sessionStorage.getItem(readyKey) === "true";
+      const isComplete = next.user.user_metadata?.profile_completed === true || Boolean(next.user.user_metadata?.username);
+      const alreadyReady = window.sessionStorage.getItem(readyKey) === "true" || (isComplete && window.localStorage.getItem(readyKey) === "true");
       if (alreadyReady) { setProfileReady(true); return; }
       void initialize(next).then(({ state, createdPersonalScape }) => {
-        if (state === "ready") window.sessionStorage.setItem(readyKey, "true");
+        if (state === "ready") {
+          window.sessionStorage.setItem(readyKey, "true");
+          window.localStorage.setItem(readyKey, "true");
+        }
         if (createdPersonalScape) window.sessionStorage.setItem(`deepscapes-show-help:${next.user.id}`, "true");
         if (version === requestVersion.current) {
           // Do not show a newly authenticated user an empty dashboard before

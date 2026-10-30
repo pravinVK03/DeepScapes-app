@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/auth-provider";
+import { NotificationCenter } from "@/components/ui/notification-center";
 
 export const metadata: Metadata = {
   title: "DeepScapes",
@@ -23,7 +24,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider><NotificationCenter>{children}</NotificationCenter></AuthProvider>
         <Analytics />
         <Script id="google-analytics" strategy="afterInteractive">
           {`window.dataLayer = window.dataLayer || [];

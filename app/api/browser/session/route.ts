@@ -232,9 +232,9 @@ export async function POST(request: Request) {
   const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
   const scape = loaded.scape!;
-  const quota = await rateLimit(request, "steel-session", 4, 60 * 60 * 1000, loaded.user!.id);
+  const quota = await rateLimit(request, "steel-session", 12, 60 * 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
-  const dailyQuota = await rateLimit(request, "steel-session-daily", 10, 24 * 60 * 60 * 1000, loaded.user!.id);
+  const dailyQuota = await rateLimit(request, "steel-session-daily", 30, 24 * 60 * 60 * 1000, loaded.user!.id);
   if (!dailyQuota.allowed) return rateLimited(dailyQuota.retryAfter);
 
   // No inactivityTimeout: remote input may legitimately pause while the user reads.
@@ -304,7 +304,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url); const scapeId = searchParams.get("scapeId") || undefined; const sessionId = searchParams.get("sessionId");
   const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
-  const quota = await rateLimit(request, "steel-traces", 10, 60 * 1000, loaded.user!.id);
+  const quota = await rateLimit(request, "steel-traces", 30, 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
   const response = await fetch(`https://api.steel.dev/v1/sessions/${encodeURIComponent(sessionId)}/agent-traces`, { headers: { "steel-api-key": apiKey }, cache: "no-store" }).catch(() => undefined);
@@ -323,10 +323,10 @@ export async function PATCH(request: Request) {
   if ((target?.length || 0) > 1_000 || (sessionName?.length || 0) > 120 || (activeUrl?.length || 0) > 2_048) return Response.json({ error: "This browser request is too large." }, { status: 400 });
   const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
-  const quota = await rateLimit(request, "steel-navigation", 24, 60 * 60 * 1000, loaded.user!.id);
-  if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
   if (action === "checkpoint") {
+    const quota = await rateLimit(request, "steel-checkpoint", 120, 60 * 60 * 1000, loaded.user!.id);
+    if (!quota.allowed) return rateLimited(quota.retryAfter);
     try {
       const snapshot = await captureRemoteSession(steelConnectUrl(sessionId, apiKey), sessionId, sessionName?.trim() || "Browsing session", activeUrl);
       return Response.json({ snapshot });
@@ -334,6 +334,8 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "The live browser is no longer reachable." }, { status: 409 });
     }
   }
+  const quota = await rateLimit(request, "steel-navigation", 120, 60 * 60 * 1000, loaded.user!.id);
+  if (!quota.allowed) return rateLimited(quota.retryAfter);
   const next = destination(target);
   try {
     await navigateRemotePage(steelConnectUrl(sessionId, apiKey), next.url, activeUrl);
@@ -353,7 +355,7 @@ export async function DELETE(request: Request) {
   if ((sessionName?.length || 0) > 120 || (activeUrl?.length || 0) > 2_048) return Response.json({ error: "This browser request is too large." }, { status: 400 });
   const loaded = await loadScape(request, scapeId, true);
   if (loaded.error) return loaded.error;
-  const quota = await rateLimit(request, "steel-close", 8, 60 * 60 * 1000, loaded.user!.id);
+  const quota = await rateLimit(request, "steel-close", 30, 60 * 60 * 1000, loaded.user!.id);
   if (!quota.allowed) return rateLimited(quota.retryAfter);
   if (!sessionId) return Response.json({ error: "Session is required" }, { status: 400 });
   let snapshot: BrowserSessionSnapshot | undefined;

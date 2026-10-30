@@ -3,11 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/icons";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Resource } from "@/lib/mock-data";
-import { newId, saveScape, useScape } from "@/lib/scape-store";
+import { loadRemoteScape, newId, saveScape, useScape } from "@/lib/scape-store";
+import { PageLoader } from "@/components/ui/page-loader";
 
 const log = (action: string, detail: string) => ({ id: newId("activity"), action, detail, time: new Date().toISOString() });
 function extension(title: string) { const part = title.split(".").pop(); return part && part !== title ? part.toUpperCase() : "FILE"; }
@@ -25,10 +26,37 @@ async function downloadResource(url: string, name: string) {
 }
 
 export default function ResourceViewer() {
-  const params = useParams<{ id: string; resourceId: string }>(); const router = useRouter(); const searchParams = useSearchParams(); const scape = useScape(params.id); const [editing, setEditing] = useState(() => searchParams.get("edit") === "1");
+  const params = useParams<{ id: string; resourceId: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const scape = useScape(params.id);
+  const [editing, setEditing] = useState(() => searchParams.get("edit") === "1");
   const { user } = useAuth();
   const resource = scape?.resources.find((item) => item.id === params.resourceId);
-  if (!scape || !resource) return <main className="grid min-h-screen place-items-center text-sm text-[#718077]"><button onClick={() => router.push("/workspace/" + params.id)}>Return to workspace</button></main>;
+  const [loading, setLoading] = useState(!scape || Boolean(scape.summary) || !resource);
+
+  useEffect(() => {
+    if (!params.id) return;
+    let active = true;
+    void loadRemoteScape(params.id).then(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [params.id, params.resourceId]);
+
+  if (loading && (!scape || !resource)) return <PageLoader title="Opening your resource…" description="Preparing the item in your Scape." showMessage />;
+
+  if (!scape || !resource) {
+    return (
+      <main className="grid min-h-screen place-items-center text-sm text-[#718077]">
+        <div className="text-center">
+          <p>Resource not found</p>
+          <button onClick={() => router.push("/workspace/" + params.id)} className="mt-3 rounded-lg bg-[#315443] px-4 py-2 text-white">Return to workspace</button>
+        </div>
+      </main>
+    );
+  }
+
   const currentScape = scape;
   const currentResource = resource;
   const canEdit = currentScape.ownerId === user?.id || currentScape.collaborators?.some((person) => (person.id === user?.id || person.email === user?.email) && person.permission === "edit") === true;
@@ -37,7 +65,7 @@ export default function ResourceViewer() {
   function save(title: string, content: string) { if (!canEdit) return; void saveScape({ ...currentScape, resources: currentScape.resources.map((item) => item.id === currentResource.id ? { ...item, title, content } : item), activity: [log("Resource updated", title), ...currentScape.activity] }); setEditing(false); }
   function remove() { if (!canEdit || !window.confirm("Delete this resource?")) return; void saveScape({ ...currentScape, resources: currentScape.resources.filter((item) => item.id !== currentResource.id), activity: [log("Resource deleted", currentResource.title), ...currentScape.activity] }); router.push("/workspace/" + currentScape.id); }
   function toggleStar() { if (!canEdit) return; void saveScape({ ...currentScape, resources: currentScape.resources.map((item) => item.id === currentResource.id ? { ...item, starred: !item.starred } : item), activity: [log(currentResource.starred ? "Resource unstarred" : "Resource starred", currentResource.title), ...currentScape.activity] }); }
-  return <main className="min-h-screen bg-[#f7f7f3]"><header className="mx-auto flex max-w-5xl items-center justify-between px-5 py-6 sm:px-8"><Link href={"/workspace/" + currentScape.id} className="inline-flex items-center gap-2 text-sm text-[#718077] hover:text-[#17231d]"><Icon name="back" className="h-4 w-4" />Back to Scape</Link><div className="flex gap-2">{downloadable && <button onClick={() => void downloadResource(downloadUrl!, currentResource.title)} className="grid h-10 w-10 place-items-center rounded-full border border-[#dce1d9] bg-white text-[#315443] hover:bg-[#edf0df]" aria-label={"Download " + currentResource.title}><Icon name="download" className="h-4 w-4" /></button>}{canEdit && <><button onClick={toggleStar} className="star-control grid h-10 w-10 place-items-center rounded-full border border-[#dce1d9] bg-white hover:bg-[#edf0df]" data-starred={currentResource.starred} aria-label={currentResource.starred ? "Remove from starred" : "Add to starred"}>★</button><button onClick={remove} className="rounded-full border border-[#dce1d9] bg-white p-2 text-[#a95b54] hover:bg-[#f7e8e5]" aria-label={"Delete " + currentResource.title}><Icon name="delete" className="h-4 w-4" /></button><button onClick={() => setEditing(!editing)} className="rounded-full border border-[#dce1d9] bg-white px-4 py-2 text-sm">{editing ? "Cancel" : "Edit"}</button></>}</div></header><section className="mx-auto max-w-4xl px-5 pb-20 pt-8 sm:px-8">{editing && canEdit ? <Editor resource={currentResource} save={save} remove={remove} /> : <Viewer resource={currentResource} />}</section></main>;
+  return <main className="min-h-screen bg-[#f7f7f3]"><header className="mx-auto flex max-w-5xl items-center justify-between px-5 py-6 sm:px-8"><Link href={"/workspace/" + currentScape.id} className="inline-flex items-center gap-2 text-sm text-[#718077] hover:text-[#17231d]"><Icon name="back" className="h-4 w-4" />Back to Scape</Link><div className="flex gap-2">{downloadable && <button onClick={() => void downloadResource(downloadUrl!, currentResource.title)} className="grid h-10 w-10 place-items-center rounded-full border border-[#dce1d9] bg-white text-[#315443] hover:bg-[#edf0df]" aria-label={"Download " + currentResource.title}><Icon name="download" className="h-4 w-4" /></button>}{canEdit && <><button onClick={toggleStar} className={"star-control grid h-10 w-10 place-items-center rounded-full border border-[#dce1d9] bg-white hover:bg-[#edf0df] " + (currentResource.starred ? "text-[#c99a17]" : "text-[#718077]")} aria-label={currentResource.starred ? "Remove from starred" : "Add to starred"}><Icon name="star" className={"h-4 w-4 " + (currentResource.starred ? "fill-current text-[#c99a17]" : "")} strokeWidth={2.2} /></button><button onClick={remove} className="rounded-full border border-[#dce1d9] bg-white p-2 text-[#a95b54] hover:bg-[#f7e8e5]" aria-label={"Delete " + currentResource.title}><Icon name="delete" className="h-4 w-4" /></button><button onClick={() => setEditing(!editing)} className="rounded-full border border-[#dce1d9] bg-white px-4 py-2 text-sm">{editing ? "Cancel" : "Edit"}</button></>}</div></header><section className="mx-auto max-w-4xl px-5 pb-20 pt-8 sm:px-8">{editing && canEdit ? <Editor resource={currentResource} save={save} remove={remove} /> : <Viewer resource={currentResource} />}</section></main>;
 }
 
 function Editor({ resource, save, remove }: { resource: Resource; save: (title: string, content: string) => void; remove: () => void }) {

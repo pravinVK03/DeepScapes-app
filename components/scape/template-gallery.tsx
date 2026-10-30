@@ -32,17 +32,18 @@ export default function TemplateGallery() {
     setCreating(true);
     const id = newId(title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "scape");
     const thumbnail = takeDraftThumbnail();
+    const now = new Date().toISOString();
     const resources = template.sections.map((section, index) => ({
       id: `starter-${index}`,
       title: section,
       type: index === 2 ? "task" as const : "note" as const,
       detail: index === 2 ? "Task · Not started" : "Note",
-      date: "Just now",
+      date: now,
     }));
     const scape: Scape = {
       id, title, description, template: template.name, cover: thumbnail || template.color,
-      updated: "Just created", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), resources,
-      activity: [{ id: "created", action: "Scape created", detail: template.name, time: "Just now" }],
+      updated: "Just created", createdAt: now, updatedAt: now, resources,
+      activity: [{ id: "created", action: "Scape created", detail: template.name, time: now }],
       ownerId: user?.id,
       collaborators: user?.email ? [{ id: user.id, name: typeof user.user_metadata.username === "string" ? user.user_metadata.username : user.email.split("@")[0], email: user.email, permission: "edit" }] : [],
     };

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/ui/app-header";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { useAuth } from "@/components/auth/auth-provider";
+import { PageLoader } from "@/components/ui/page-loader";
 
 export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const router = useRouter();
@@ -116,11 +117,16 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   async function resolveLoginEmail(value: string) {
     const candidate = value.trim();
     if (candidate.includes("@")) return candidate;
-    const response = await fetch(
-      `/api/auth/login?username=${encodeURIComponent(candidate)}`,
-    );
-    const data = (await response.json()) as { email?: string };
-    return data.email ?? "";
+    try {
+      const response = await fetch(
+        `/api/auth/login?username=${encodeURIComponent(candidate)}`,
+      );
+      if (!response.ok) return "";
+      const data = (await response.json()) as { email?: string };
+      return data.email ?? "";
+    } catch {
+      return "";
+    }
   }
 
   async function submit(event: FormEvent) {
@@ -198,6 +204,8 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         setRedirecting("sign-in");
         router.replace(destination);
       }
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Something went wrong. Please check your connection and try again.");
     } finally {
       setBusy(false);
       setPendingAction(null);
@@ -246,23 +254,16 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
         "Add the Supabase publishable key to enable Google sign-in.",
       );
     setRedirecting("google");
+    const nextDestination = destination && destination !== "/scapes" ? `?next=${encodeURIComponent(destination)}` : "";
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/login` },
+      options: { redirectTo: `${window.location.origin}/login${nextDestination}` },
     });
     if (error) setRedirecting(false);
     if (error) setMessage(error.message);
   }
 
-  if (redirecting)
-    return (
-      <main className="grid min-h-screen place-items-center bg-[var(--paper)] px-5">
-        <div role="status" aria-live="polite" className="text-center">
-          <span className="mx-auto block h-8 w-8 animate-spin rounded-full border-2 border-[#bfdbfe] border-t-[#1d4ed8]" />
-          <p className="mt-4 text-sm text-[#718077]">{redirecting === "google" ? "Opening Google sign-in…" : "Signing you in…"}</p>
-        </div>
-      </main>
-    );
+  if (redirecting) return <PageLoader title={redirecting === "google" ? "Opening Google sign-in…" : "Welcome back…"} description="Preparing your workspace." showMessage />;
 
   return (
     <main className="min-h-screen">

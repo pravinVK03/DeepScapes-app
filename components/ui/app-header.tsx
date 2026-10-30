@@ -39,14 +39,19 @@ export function AppHeader({ compact = false, onShare }: { compact?: boolean; onS
     return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", dismissWithKeyboard); };
   }, [profileOpen]);
 
+  const checkedGmailOwner = useRef(false);
+
   useEffect(() => {
-    if (!profileOpen || !user) return;
+    if (!profileOpen || !user || checkedGmailOwner.current) return;
     let active = true;
     void (async () => {
       const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
       const response = await fetch("/api/feedback/gmail/connect", { headers: token ? { Authorization: `Bearer ${token}` } : {} }).catch(() => undefined);
       const data = await response?.json().catch(() => undefined) as { owner?: boolean } | undefined;
-      if (active) setCanConnectGmail(Boolean(data?.owner));
+      if (active) {
+        checkedGmailOwner.current = true;
+        setCanConnectGmail(Boolean(data?.owner));
+      }
     })();
     return () => { active = false; };
   }, [profileOpen, user]);
@@ -94,23 +99,23 @@ export function AppHeader({ compact = false, onShare }: { compact?: boolean; onS
         <div className="flex items-center gap-2">
           {user && pathname.match(/^\/workspace\/[^/]+$/) && (onShare ? <button onClick={onShare} className="hidden rounded-lg border border-[#dce1d9] px-3 py-2 text-sm sm:inline-flex">Share</button> : <Link href={`${pathname}/share`} className="hidden rounded-lg border border-[#dce1d9] px-3 py-2 text-sm sm:inline-flex">Share</Link>)}
           {user ? <div ref={profileRef} className="relative">
-            <button onClick={() => { setCanConnectGmail(false); setProfileOpen((open) => !open); }} className="profile-trigger flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition" aria-expanded={profileOpen} aria-label="Open profile menu">
+            <button onClick={() => setProfileOpen((open) => !open)} className="profile-trigger flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition" aria-expanded={profileOpen} aria-label="Open profile menu">
               <span className="profile-avatar grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#315443] text-xs font-semibold text-white">{avatarImage ? <Image src={avatar} alt="" width={24} height={24} unoptimized className="h-full w-full object-cover" /> : avatar || displayName?.slice(0, 1).toUpperCase()}</span>
               <span className="hidden max-w-28 truncate sm:inline">{displayName}</span>
             </button>
-            {profileOpen && <div className="profile-menu absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-[#dce1d9] bg-white p-1 shadow-xl">
-              <div className="px-3 py-2"><p className="truncate text-sm font-medium">{displayName}</p><p className="truncate text-xs text-[#718077]">{user.email}</p></div>
-              <div className="mx-2 my-1 border-t border-[#e5e8e2] pt-1">
-                <Link href="/settings/profile" onClick={() => setProfileOpen(false)} className="block rounded-lg px-2 py-2 text-sm hover:bg-[#edf0df]">Profile settings</Link>
-                <Link href="/help" onClick={() => setProfileOpen(false)} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-[#edf0df]"><Icon name="help" className="h-4 w-4" />Help &amp; guide</Link>
+            {profileOpen && <div className="profile-menu absolute right-0 z-40 mt-2 w-72 overflow-hidden rounded-xl border border-[#dce1d9] p-2 shadow-xl">
+              <div className="profile-menu-identity px-3 pb-3 pt-2"><p className="truncate text-sm font-semibold">{displayName}</p><p className="mt-1 truncate text-xs text-[#718077]">{user.email}</p></div>
+              <div className="py-2">
+                <Link href="/settings/profile" onClick={() => setProfileOpen(false)} className="profile-menu-action"><Icon name="note" className="h-4 w-4" />Profile settings</Link>
+                <Link href="/help" onClick={() => setProfileOpen(false)} className="profile-menu-action"><Icon name="help" className="h-4 w-4" />Help &amp; guide</Link>
               </div>
-              {canConnectGmail && <div className="mx-2 my-1 border-t border-[#e5e8e2] pt-1">
-                <button type="button" onClick={() => void connectGmail()} disabled={connectingGmail} className="block w-full rounded-lg px-2 py-2 text-left text-sm hover:bg-[#edf0df] disabled:opacity-50">{connectingGmail ? "Opening Gmail…" : "Connect feedback inbox"}</button>
+              {canConnectGmail && <div className="profile-menu-section py-2">
+                <button type="button" onClick={() => void connectGmail()} disabled={connectingGmail} className="profile-menu-action w-full disabled:opacity-50"><Icon name="link" className="h-4 w-4" />{connectingGmail ? "Opening Gmail…" : "Connect feedback inbox"}</button>
                 {gmailMessage && <p className="px-2 pb-2 text-xs text-[#a95b54]">{gmailMessage}</p>}
               </div>}
-              <div className="mx-2 my-1 border-t border-[#e5e8e2] px-1 pb-1 pt-2">
+              <div className="profile-menu-section px-2 pb-2 pt-3">
                 <p className="pb-2 text-xs font-medium uppercase tracking-[.12em] text-[#718077]">Appearance</p>
-                <div className="flex items-center justify-between gap-3 rounded-lg py-1">
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-[#f2f4ed] px-2 py-2">
                   <span className="text-sm text-[#718077]">Light</span>
                   <button type="button" role="switch" aria-checked={theme === "dark"} aria-label="Toggle dark appearance" onClick={() => chooseTheme(theme === "dark" ? "light" : "dark")} className="theme-toggle" data-checked={theme === "dark"}>
                     <span className="theme-toggle-thumb" />
@@ -118,7 +123,7 @@ export function AppHeader({ compact = false, onShare }: { compact?: boolean; onS
                   <span className="text-sm text-[#718077]">Dark</span>
                 </div>
               </div>
-              <button onClick={() => { setProfileOpen(false); void signOut(); }} className="profile-signout block w-full rounded-lg px-3 py-2 text-left text-sm text-[#a95b54] hover:bg-[#edf0df]">Sign out</button>
+              <div className="profile-menu-section pt-2"><button onClick={() => { setProfileOpen(false); void signOut(); }} className="profile-signout profile-menu-action w-full text-[#a95b54]">Sign out</button></div>
             </div>}
           </div> : !loading && !compact && <Link href="/login" className="hidden rounded-lg px-2 py-2 text-sm text-[#718077] sm:block">Sign in</Link>}
           {!compact && user && <Link href="/create" className="inline-flex items-center gap-2 rounded-lg bg-[#315443] px-3.5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#254235]"><Icon name="plus" className="h-4 w-4" /><span className="hidden sm:inline">New Scape</span></Link>}
