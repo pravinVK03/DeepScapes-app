@@ -1,5 +1,5 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
-import { BrowserState, Collaborator, Resource, Scape } from "@/lib/mock-data";
+import { BrowserState, Collaborator, DEFAULT_SCAPE_COVER, Resource, Scape } from "@/lib/mock-data";
 import { rateLimit, rateLimited } from "@/lib/rate-limit";
 import { createHash } from "node:crypto";
 
@@ -12,7 +12,7 @@ function text(value: unknown, fallback = "") { return typeof value === "string" 
 function bool(value: unknown) { return value === true || value === "true"; }
 function access(scape: Scape, userId: string, email?: string, edit = false) { if (scape.ownerId === userId) return true; const person = scape.collaborators?.find((item) => item.id === userId || (email && item.email === email)); return Boolean(person && (!edit || person.permission === "edit")); }
 
-async function signedCover(path?: string, fallback = "#1d4ed8") { if (!path) return fallback; return (await getSupabase().storage.from(coverBucket).createSignedUrl(path, 60 * 60 * 24 * 7)).data?.signedUrl || fallback; }
+async function signedCover(path?: string, fallback = DEFAULT_SCAPE_COVER) { if (!path) return fallback; return (await getSupabase().storage.from(coverBucket).createSignedUrl(path, 60 * 60 * 24 * 7)).data?.signedUrl || fallback; }
 
 async function loadScape(id: string): Promise<Scape | undefined> {
   const supabase = getSupabase(); const { data: base, error } = await supabase.from("scapes").select("id,owner_id,title,description,template,cover_value,cover_path,cover_position,cover_zoom,starred,archived,hidden_sections,created_at,updated_at").eq("id", id).maybeSingle();

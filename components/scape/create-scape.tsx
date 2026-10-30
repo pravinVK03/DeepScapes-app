@@ -7,12 +7,13 @@ import { useState } from "react";
 import { AppHeader } from "@/components/ui/app-header";
 import { ImageCropDialog } from "@/components/ui/image-crop-dialog";
 import { saveDraftThumbnail } from "@/lib/scape-draft";
+import { DEFAULT_SCAPE_COVER } from "@/lib/mock-data";
 
 export default function CreateScape() {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [thumbnail, setThumbnail] = useState("");
+  const [thumbnail, setThumbnail] = useState(DEFAULT_SCAPE_COVER);
   const [thumbnailMode, setThumbnailMode] = useState<"color" | "image">("color");
   const [cropFile, setCropFile] = useState<File>();
   const [continuing, setContinuing] = useState(false);

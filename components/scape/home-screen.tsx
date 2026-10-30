@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { AppHeader } from "@/components/ui/app-header";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Icon } from "@/components/ui/icons";
-import { Scape } from "@/lib/mock-data";
+import { DEFAULT_SCAPE_COVER, preferredScapeCover, Scape } from "@/lib/mock-data";
 import { deleteScape, getScapes, loadRemoteScape, loadRemoteScapes, newId, saveScape, saveScapes, useScapes } from "@/lib/scape-store";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { ShareScape } from "@/components/scape/share-scape";
@@ -33,11 +33,11 @@ function ScapeCard({ scape, index, canEdit, onStar, onShare, onArchive, onDelete
   const [menuOpen, setMenuOpen] = useState(false);
   const [failedThumbnail, setFailedThumbnail] = useState<string>();
   const [refreshedThumbnail, setRefreshedThumbnail] = useState<string>();
-  const coverVal = scape.cover || "#1d4ed8";
+  const coverVal = preferredScapeCover(scape.cover);
   const coverIsImage = coverVal.startsWith("data:") || /^https?:/i.test(coverVal);
   const thumbnailFailed = failedThumbnail === coverVal;
   const thumbnailRefreshed = refreshedThumbnail === coverVal;
-  const cover = { "--scape-cover": coverIsImage ? "#1d4ed8" : coverVal, backgroundPosition: scape.coverPosition || "center", backgroundSize: "cover", backgroundRepeat: "no-repeat" } as CSSProperties;
+  const cover = { "--scape-cover": coverIsImage ? DEFAULT_SCAPE_COVER : coverVal, backgroundPosition: scape.coverPosition || "center", backgroundSize: "cover", backgroundRepeat: "no-repeat" } as CSSProperties;
   return <article className="scape-card rise overflow-visible rounded-2xl border border-[#e5e8e2] bg-white shadow-[0_8px_30px_rgba(23,35,29,.035)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(23,35,29,.09)]" style={{ animationDelay: `${index * 70}ms` }}>
     <Link href={`/workspace/${scape.id}`} className="group block overflow-hidden rounded-2xl">
     <div className="scape-card-cover relative h-36 overflow-hidden p-4" style={cover}>{coverIsImage && !thumbnailFailed && <img src={coverVal} alt="" loading={index < 3 ? "eager" : "lazy"} decoding="async" onError={() => { if (thumbnailRefreshed) { setFailedThumbnail(coverVal); return; } setRefreshedThumbnail(coverVal); void loadRemoteScapes({ force: true }).then((fresh) => { if (fresh) saveScapes([...getScapes(), ...fresh]); }); }} className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" style={{ objectPosition: scape.coverPosition || "center", transform: scape.coverZoom && scape.coverZoom > 1 ? `scale(${scape.coverZoom})` : undefined }} />}<div className="relative flex h-full items-end"><span className="rounded-full bg-black/30 px-3 py-1 text-xs text-white backdrop-blur">{scape.template}</span></div></div>

@@ -7,7 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/ui/app-header";
 import { Icon } from "@/components/ui/icons";
-import { BrowserActivity, BrowserSessionSnapshot, BrowserState, Resource, ResourceType, Scape } from "@/lib/mock-data";
+import { BrowserActivity, BrowserSessionSnapshot, BrowserState, DEFAULT_SCAPE_COVER, preferredScapeCover, Resource, ResourceType, Scape } from "@/lib/mock-data";
 import { deleteScape, getScape, loadRemoteScape, newId, saveScape, useScape } from "@/lib/scape-store";
 import { useAuth } from "@/components/auth/auth-provider";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
@@ -110,9 +110,9 @@ export default function WorkspaceScreen() {
   function removeResource(resource: Resource) { if (!canEdit || !window.confirm(`Delete ${resource.title}? This cannot be undone.`)) return; void update({ ...scape!, resources: scape!.resources.filter((item) => item.id !== resource.id), activity: [log("Resource deleted", resource.title), ...scape!.activity] }); }
   function removeSection(type: ResourceType) { if (!canEdit || !window.confirm(`Remove this section from ${scape!.title}? Its resources will stay safe and can be restored with Add section.`)) return; void update({ ...scape!, hiddenSections: [...new Set([...(scape!.hiddenSections || []), type])], activity: [log("Section removed", sections.find((section) => section.type === type)?.label || type), ...scape!.activity] }); }
   function restoreSection(type: ResourceType) { if (!canEdit) return; void update({ ...scape!, hiddenSections: (scape!.hiddenSections || []).filter((item) => item !== type), activity: [log("Section added", sections.find((section) => section.type === type)?.label || type), ...scape!.activity] }); setSectionPickerOpen(false); }
-  const coverVal = scape.cover || "#1d4ed8";
+  const coverVal = preferredScapeCover(scape.cover);
   const coverIsImage = coverVal.startsWith("data:") || /^https?:/i.test(coverVal);
-  const cover = { background: coverIsImage ? "#1d4ed8" : coverVal } as CSSProperties;
+  const cover = { background: coverIsImage ? DEFAULT_SCAPE_COVER : coverVal } as CSSProperties;
 
   return <main className="min-h-screen"><AppHeader /><section className="mx-auto max-w-7xl px-5 pb-12 pt-6 sm:px-8">
     <Link href="/scapes" className="inline-flex items-center gap-2 text-sm text-[#718077] hover:text-[#17231d]"><Icon name="back" className="h-4 w-4" />All Scapes</Link>
@@ -360,7 +360,7 @@ function ResumeSessionChoice({ session, close, choose }: { session: WebSession; 
 }
 
 function ScapeEditor({ scape, close, save, canDelete }: { scape: Scape; close: () => void; save: (scape: Scape) => Promise<void>; canDelete: boolean }) {
-  const [title, setTitle] = useState(scape.title); const [description, setDescription] = useState(scape.description); const [cover, setCover] = useState(scape.cover); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [imageUploaded, setImageUploaded] = useState(scape.cover.startsWith("data:")); const [cropFile, setCropFile] = useState<File>();
+  const [title, setTitle] = useState(scape.title); const [description, setDescription] = useState(scape.description); const [cover, setCover] = useState(preferredScapeCover(scape.cover)); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [imageUploaded, setImageUploaded] = useState(scape.cover.startsWith("data:")); const [cropFile, setCropFile] = useState<File>();
   const router = useRouter();
   function upload(file?: File) { if (!file) return; if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) { setError("Choose an image smaller than 5 MB for the thumbnail."); return; } setError(""); setCropFile(file); }
   async function submit() { if (!title.trim()) return; setSaving(true); setError(""); try { await save({ ...scape, title: title.trim(), description, cover, coverZoom: 1, coverPosition: "50% 50%", activity: [log("Scape information updated", title.trim()), ...scape.activity] }); close(); } catch { setError("Couldn’t save this Scape. Please try again."); } finally { setSaving(false); } }

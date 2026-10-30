@@ -32,10 +32,14 @@ export type BrowserState = {
 };
 export type CollaborationPermission = "view" | "edit";
 export type Collaborator = { id: string; name: string; email: string; permission: CollaborationPermission; pending?: boolean };
+export const DEFAULT_SCAPE_COVER = "#262626";
+// The former blue fallback was never an intentional user choice. Rendering it
+// as the neutral default also makes existing personal Scapes consistent.
+export function preferredScapeCover(cover?: string) { return !cover || cover === "#1d4ed8" ? DEFAULT_SCAPE_COVER : cover; }
 export type Scape = { id: string; title: string; description: string; template: string; cover: string; coverPosition?: string; coverZoom?: number; updated: string; createdAt?: string; updatedAt?: string; resources: Resource[]; activity: Activity[]; starred?: boolean; archived?: boolean; hiddenSections?: ResourceType[]; ownerId?: string; collaborators?: Collaborator[]; browser?: BrowserState; browserContexts?: Record<string, string>; summary?: boolean; pendingInvite?: boolean; invitePermission?: CollaborationPermission };
 export type Template = { name: string; icon: string; color: string; description: string; sections: string[] };
 export const templates = [
-  { name: "Blank Scape", icon: "＋", color: "#eceee9", description: "A clear, open space for whatever comes next.", sections: [] },
+  { name: "Blank Scape", icon: "＋", color: DEFAULT_SCAPE_COVER, description: "A clear, open space for whatever comes next.", sections: [] },
   { name: "UI/UX Design", icon: "✦", color: "#dbeafe", description: "Turn loose ideas into a considered experience.", sections: ["Design brief", "User insights", "Moodboard"] },
   { name: "App Design", icon: "▣", color: "#dfe5f1", description: "Shape your product from first thought to launch.", sections: ["Product vision", "Flows", "Build list"] },
   { name: "Blog", icon: "✎", color: "#f5e5d6", description: "A focused home for your next great story.", sections: ["Article idea", "Research", "Outline"] },

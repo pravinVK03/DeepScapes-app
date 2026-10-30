@@ -1,5 +1,5 @@
 import { databaseEnabled, getSupabase } from "@/lib/db";
-import { Scape } from "@/lib/mock-data";
+import { DEFAULT_SCAPE_COVER, Scape } from "@/lib/mock-data";
 import { rateLimit, rateLimited } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -25,7 +25,7 @@ function personalScape(userId: string, username: string, email: string): Scape {
     title: `${username}'s Scape`,
     description: "A personal space for everything you are working on.",
     template: "Blank Scape",
-    cover: "#1d4ed8",
+    cover: DEFAULT_SCAPE_COVER,
     updated: "Just created",
     createdAt: now,
     updatedAt: now,
