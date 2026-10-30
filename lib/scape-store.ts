@@ -11,6 +11,18 @@ const remoteScapeRequests = new Map<string, Promise<Scape | undefined>>();
 let lastRemoteScapesSync = 0;
 const remoteSyncWindowMs = 5 * 60 * 1000;
 
+function warmVisibleCovers(scapes: Scape[]) {
+  if (typeof Image === "undefined") return;
+  const seen = new Set<string>();
+  for (const scape of scapes) {
+    if (seen.size >= 6 || !/^https?:/i.test(scape.cover) || seen.has(scape.cover)) continue;
+    seen.add(scape.cover);
+    const image = new Image();
+    image.decoding = "async";
+    image.src = scape.cover;
+  }
+}
+
 function dedupeScapes(scapes: Scape[]) {
   const unique = new Map<string, Scape>();
   for (const scape of scapes) {
@@ -149,6 +161,10 @@ export async function loadRemoteScapes({ force = false }: { force?: boolean } = 
     try {
       const data = await response.json() as { scapes?: Scape[] };
       if (!Array.isArray(data.scapes)) return undefined;
+      // Start downloading the covers that are likely to be above the fold
+      // before React commits the cards. The browser cache then makes their
+      // visible render immediate without preloading an entire large library.
+      warmVisibleCovers(data.scapes);
       lastRemoteScapesSync = Date.now();
       if (syncKey) window.sessionStorage.setItem(syncKey, String(lastRemoteScapesSync));
       return data.scapes;
