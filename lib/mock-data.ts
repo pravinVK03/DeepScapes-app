@@ -32,7 +32,7 @@ export type BrowserState = {
 };
 export type CollaborationPermission = "view" | "edit";
 export type Collaborator = { id: string; name: string; email: string; permission: CollaborationPermission; pending?: boolean };
-export type Scape = { id: string; title: string; description: string; template: string; cover: string; coverPosition?: string; coverZoom?: number; updated: string; createdAt?: string; updatedAt?: string; resources: Resource[]; activity: Activity[]; starred?: boolean; archived?: boolean; hiddenSections?: ResourceType[]; ownerId?: string; collaborators?: Collaborator[]; browser?: BrowserState; browserContexts?: Record<string, string>; summary?: boolean };
+export type Scape = { id: string; title: string; description: string; template: string; cover: string; coverPosition?: string; coverZoom?: number; updated: string; createdAt?: string; updatedAt?: string; resources: Resource[]; activity: Activity[]; starred?: boolean; archived?: boolean; hiddenSections?: ResourceType[]; ownerId?: string; collaborators?: Collaborator[]; browser?: BrowserState; browserContexts?: Record<string, string>; summary?: boolean; pendingInvite?: boolean; invitePermission?: CollaborationPermission };
 export type Template = { name: string; icon: string; color: string; description: string; sections: string[] };
 export const templates = [
   { name: "Blank Scape", icon: "＋", color: "#eceee9", description: "A clear, open space for whatever comes next.", sections: [] },

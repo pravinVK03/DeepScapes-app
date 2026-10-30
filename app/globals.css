@@ -36,6 +36,8 @@ input[aria-label="Search Scapes by name, description, or template"] ~ kbd { disp
 .navigation-progress { position: fixed; inset: 0 0 auto; z-index: 100; height: 2px; overflow: hidden; pointer-events: none; }
 .navigation-progress span { display: block; width: 32%; height: 100%; border-radius: inherit; background: #1d4ed8; animation: navigation-progress-sweep .85s cubic-bezier(.16, 1, .3, 1) infinite; }
 .logo-dark { display: none; }
+.app-logo .logo-light { display: block !important; }
+.app-logo .logo-dark { display: none !important; }
 html.dark { --ink: #f5f5f5; --muted: #a3a3a3; --paper: #0d0d0d; --line: #373737; --moss: #f5f5f5; --cream: #242424; background: #0d0d0d; color-scheme: dark; }
 html.dark body, html.dark main { background: #0d0d0d !important; color: #f5f5f5; }
 html.dark .page-loader { background: #0d0d0d !important; }
@@ -44,6 +46,8 @@ html.dark .page-loader-line span { background: #f5f5f5; }
 html.dark .navigation-progress span { background: #f5f5f5; }
 html.dark .logo-light { display: none; }
 html.dark .logo-dark { display: block; }
+html.dark .app-logo .logo-light, body.dark .app-logo .logo-light { display: none !important; }
+html.dark .app-logo .logo-dark, body.dark .app-logo .logo-dark { display: block !important; }
 html.dark .bg-white, html.dark .bg-white\/70, html.dark .bg-\[\#f7f7f3\], html.dark .bg-\[\#f7f8f4\], html.dark .bg-\[\#f9faf7\] { background: #171717 !important; }
 html.dark .bg-\[\#f2f4ed\], html.dark .bg-\[\#edf0df\], html.dark .bg-\[\#f0f3eb\], html.dark .bg-\[\#e6eee6\] { background: #242424 !important; }
 html.dark [class*="border-"] { border-color: #373737 !important; }
@@ -253,4 +257,28 @@ html.dark .profile-menu-action { color: #f5f5f5 !important; }
 html.dark .profile-menu-action svg { color: #d7d7d7 !important; }
 html.dark .profile-menu-action:hover { background: #292929 !important; color: #fff !important; }
 @media (prefers-reduced-motion: reduce) { .app-notification, .notification-mark, .feedback-complete, .feedback-complete-mark { animation: none !important; } }
+
+/* Header notifications and profile settings share the same restrained surfaces
+   in both themes, avoiding bright hover states against dark content. */
+.notification-trigger { background: #fff; }
+.notification-trigger:hover, .notification-trigger[aria-expanded="true"] { border-color: #78927d; background: #edf2eb; color: #17231d; }
+.notification-badge { position: absolute; top: -.38rem; right: -.38rem; display: grid; min-width: 1.05rem; height: 1.05rem; place-items: center; border: 2px solid var(--paper); border-radius: 999px; background: #315443; color: #fff; font-size: .6rem; font-weight: 700; line-height: 1; }
+.notification-menu { background: #fcfdfb; border-color: #d9e2d8 !important; box-shadow: 0 20px 44px rgb(23 35 29 / .16); }
+.notification-menu-item { display: flex; align-items: center; gap: .7rem; padding: .75rem; border-radius: .75rem; color: #233329; transition: background-color .18s ease, color .18s ease; }
+.notification-menu-item:hover { background: #edf2eb; color: #17231d; }
+.notification-menu-mark { display: grid; width: 2.25rem; height: 2.25rem; flex: none; place-items: center; border-radius: .75rem; background: #eaf0e8; color: #315443; }
+.profile-settings-panel { box-shadow: 0 18px 42px rgb(23 35 29 / .07); }
+.profile-identity-card { box-shadow: 0 12px 28px rgb(23 35 29 / .04); }
+.profile-upload-control:hover { border-color: #78927d; background: #f5f8f4; }
+.profile-appearance-option:hover { border-color: #78927d; background: #f2f6f1; color: #17231d; }
+html.dark .notification-trigger { border-color: #3a3a3a !important; background: #181818 !important; color: #dedede !important; }
+html.dark .notification-trigger:hover, html.dark .notification-trigger[aria-expanded="true"] { border-color: #646464 !important; background: #292929 !important; color: #fff !important; }
+html.dark .notification-badge { border-color: #0d0d0d; background: #f5f5f5; color: #111; }
+html.dark .notification-menu { border-color: #3a3a3a !important; background: #181818 !important; box-shadow: 0 20px 44px rgb(0 0 0 / .42); }
+html.dark .notification-menu-item { color: #f5f5f5 !important; }
+html.dark .notification-menu-item:hover { background: #292929 !important; color: #fff !important; }
+html.dark .notification-menu-mark { background: #2c2c2c; color: #f5f5f5; }
+html.dark .profile-settings-panel, html.dark .profile-identity-card { border-color: #3a3a3a !important; background: #181818 !important; box-shadow: 0 18px 42px rgb(0 0 0 / .32); }
+html.dark .profile-settings-avatar { background-color: #2a2a2a !important; color: #f5f5f5 !important; }
+html.dark .profile-upload-control:hover, html.dark .profile-appearance-option:hover { border-color: #646464 !important; background: #242424 !important; color: #fff !important; }
 

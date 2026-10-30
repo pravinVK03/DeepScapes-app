@@ -2,10 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
+import { loadRemoteScapes } from "@/lib/scape-store";
+import type { Scape } from "@/lib/mock-data";
 import { Icon } from "./icons";
 
 interface NavItem { label: string; href: string; }
@@ -13,6 +15,8 @@ const navItems: NavItem[] = [];
 
 export function AppHeader({ compact = false, onShare }: { compact?: boolean; onShare?: () => void }) {
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [invitations, setInvitations] = useState<Scape[]>([]);
   const [gmailMessage, setGmailMessage] = useState("");
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [canConnectGmail, setCanConnectGmail] = useState(false);
@@ -23,7 +27,9 @@ export function AppHeader({ compact = false, onShare }: { compact?: boolean; onS
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
   const profileRef = useRef<HTMLDivElement>(null);
+  const notificationRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+  const router = useRouter();
   const { user, loading, signOut } = useAuth();
   const username = typeof user?.user_metadata.username === "string" ? user.user_metadata.username : user?.email?.split("@")[0];
   const displayName = typeof user?.user_metadata.display_name === "string" ? user.user_metadata.display_name : username;
@@ -31,13 +37,20 @@ export function AppHeader({ compact = false, onShare }: { compact?: boolean; onS
   const avatarImage = avatar.startsWith("data:image/");
 
   useEffect(() => {
-    if (!profileOpen) return;
-    function dismiss(event: PointerEvent) { if (!profileRef.current?.contains(event.target as Node)) setProfileOpen(false); }
-    function dismissWithKeyboard(event: KeyboardEvent) { if (event.key === "Escape") setProfileOpen(false); }
+    if (!profileOpen && !notificationsOpen) return;
+    function dismiss(event: PointerEvent) { if (!profileRef.current?.contains(event.target as Node) && !notificationRef.current?.contains(event.target as Node)) { setProfileOpen(false); setNotificationsOpen(false); } }
+    function dismissWithKeyboard(event: KeyboardEvent) { if (event.key === "Escape") { setProfileOpen(false); setNotificationsOpen(false); } }
     document.addEventListener("pointerdown", dismiss);
     document.addEventListener("keydown", dismissWithKeyboard);
     return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", dismissWithKeyboard); };
-  }, [profileOpen]);
+  }, [notificationsOpen, profileOpen]);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    void loadRemoteScapes().then((scapes) => { if (active && scapes) setInvitations(scapes.filter((scape) => scape.pendingInvite)); });
+    return () => { active = false; };
+  }, [user]);
 
   const checkedGmailOwner = useRef(false);
 
@@ -88,7 +101,7 @@ export function AppHeader({ compact = false, onShare }: { compact?: boolean; onS
     <header className="border-b border-[#d8dcd7]">
       <div className="flex w-full items-center justify-between px-5 py-4 sm:px-8 lg:px-12">
         <div className="flex items-center gap-8">
-          <Link href={user ? "/scapes" : "/"} className="group flex items-center rounded-xl py-1" aria-label="DeepScapes home">
+          <Link href={user ? "/scapes" : "/"} className="app-logo group flex shrink-0 items-center rounded-xl py-1" aria-label="DeepScapes home">
             <Image src="/deepscapes-logo-black.svg" alt="DeepScapes" width={238} height={59} className="logo-light h-auto w-40 sm:w-48" priority />
             <Image src="/deepscapes-logo-white.svg" alt="DeepScapes" width={238} height={59} className="logo-dark h-auto w-40 sm:w-48" priority />
           </Link>
@@ -98,6 +111,13 @@ export function AppHeader({ compact = false, onShare }: { compact?: boolean; onS
         </div>
         <div className="flex items-center gap-2">
           {user && pathname.match(/^\/workspace\/[^/]+$/) && (onShare ? <button onClick={onShare} className="hidden rounded-lg border border-[#dce1d9] px-3 py-2 text-sm sm:inline-flex">Share</button> : <Link href={`${pathname}/share`} className="hidden rounded-lg border border-[#dce1d9] px-3 py-2 text-sm sm:inline-flex">Share</Link>)}
+          {user && <div ref={notificationRef} className="relative">
+            <button type="button" onClick={() => { setProfileOpen(false); setNotificationsOpen((open) => !open); }} className="notification-trigger relative grid h-9 w-9 place-items-center rounded-lg border border-[#dce1d9] text-[#4e6056] transition" aria-expanded={notificationsOpen} aria-label={`${invitations.length ? `${invitations.length} collaboration invitation${invitations.length === 1 ? "" : "s"}` : "Open notifications"}`}>
+              <Icon name="bell" className="h-4 w-4" />
+              {invitations.length > 0 && <span className="notification-badge" aria-hidden="true">{invitations.length > 9 ? "9+" : invitations.length}</span>}
+            </button>
+            {notificationsOpen && <div className="notification-menu absolute right-0 z-40 mt-2 w-[min(22rem,calc(100vw-2.5rem))] overflow-hidden rounded-xl border border-[#dce1d9] bg-white p-2 shadow-xl"><div className="flex items-center justify-between px-3 py-2"><div><p className="text-sm font-semibold">Notifications</p><p className="mt-0.5 text-xs text-[#718077]">Collaboration and workspace updates</p></div>{invitations.length > 0 && <span className="rounded-full bg-[#edf0df] px-2 py-1 text-xs font-medium text-[#315443]">{invitations.length} new</span>}</div><div className="notification-menu-list border-t border-[#e5e8e2] pt-1">{invitations.length ? invitations.map((scape) => <button key={scape.id} type="button" onClick={() => { setNotificationsOpen(false); router.push(`/workspace/${scape.id}`); }} className="notification-menu-item w-full"><span className="notification-menu-mark"><Icon name="share" className="h-4 w-4" /></span><span className="min-w-0 flex-1 text-left"><strong className="block truncate text-sm">Invitation to {scape.title}</strong><small className="mt-0.5 block truncate text-xs text-[#718077]">You can {scape.invitePermission === "edit" ? "edit" : "view"} this Scape.</small></span><Icon name="arrow" className="h-4 w-4 text-[#718077]" /></button>) : <div className="px-3 py-7 text-center"><span className="notification-menu-mark mx-auto"><Icon name="bell" className="h-4 w-4" /></span><p className="mt-3 text-sm font-medium">You&apos;re all caught up.</p><p className="mt-1 text-xs text-[#718077]">Collaboration invitations will appear here.</p></div>}</div></div>}
+          </div>}
           {user ? <div ref={profileRef} className="relative">
             <button onClick={() => setProfileOpen((open) => !open)} className="profile-trigger flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition" aria-expanded={profileOpen} aria-label="Open profile menu">
               <span className="profile-avatar grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#315443] text-xs font-semibold text-white">{avatarImage ? <Image src={avatar} alt="" width={24} height={24} unoptimized className="h-full w-full object-cover" /> : avatar || displayName?.slice(0, 1).toUpperCase()}</span>
