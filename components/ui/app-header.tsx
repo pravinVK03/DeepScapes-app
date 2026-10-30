@@ -13,7 +13,7 @@ import { Icon } from "./icons";
 interface NavItem { label: string; href: string; }
 const navItems: NavItem[] = [];
 
-export function AppHeader({ compact = false, onShare }: { compact?: boolean; onShare?: () => void }) {
+export function AppHeader({ compact = false }: { compact?: boolean }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [invitations, setInvitations] = useState<Scape[]>([]);
@@ -110,7 +110,6 @@ export function AppHeader({ compact = false, onShare }: { compact?: boolean; onS
           </nav>}
         </div>
         <div className="flex items-center gap-2">
-          {user && pathname.match(/^\/workspace\/[^/]+$/) && (onShare ? <button onClick={onShare} className="hidden rounded-lg border border-[#dce1d9] px-3 py-2 text-sm sm:inline-flex">Share</button> : <Link href={`${pathname}/share`} className="hidden rounded-lg border border-[#dce1d9] px-3 py-2 text-sm sm:inline-flex">Share</Link>)}
           {user && <div ref={notificationRef} className="relative">
             <button type="button" onClick={() => { setProfileOpen(false); setNotificationsOpen((open) => !open); }} className="notification-trigger relative grid h-9 w-9 place-items-center rounded-lg border border-[#dce1d9] text-[#4e6056] transition" aria-expanded={notificationsOpen} aria-label={`${invitations.length ? `${invitations.length} collaboration invitation${invitations.length === 1 ? "" : "s"}` : "Open notifications"}`}>
               <Icon name="bell" className="h-4 w-4" />
