@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- locally cropped avatar previews are data URLs. */
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
@@ -427,7 +428,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                 <legend className="text-sm font-medium">Choose an avatar</legend>
                 <div className="mt-2 flex flex-wrap gap-2">{["🌿", "✦", "☁️", "◉", "◆", "☼"].map((option) => <button key={option} type="button" onClick={() => setAvatar(option)} aria-label={`Use ${option} as your avatar`} aria-pressed={avatar === option} className={`grid h-11 w-11 place-items-center rounded-full border text-lg transition hover:-translate-y-0.5 ${avatar === option ? "border-[#315443] bg-[#edf0df]" : "border-[#dce1d9] bg-white"}`}>{option}</button>)}</div>
                 <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-[#dce1d9] px-3 py-2 text-sm text-[#718077] hover:border-[#315443] hover:text-[#315443]">
-                  <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-[#edf0df] text-base" style={avatar.startsWith("data:") ? { backgroundImage: `url(${avatar})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}>{avatar.startsWith("data:") ? "" : avatar}</span>
+                  <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-[#edf0df] text-base">{avatar.startsWith("data:image/") ? <img src={avatar} alt="Selected profile preview" className="h-full w-full object-cover" /> : avatar}</span>
                   Upload a profile image
                   <input type="file" accept="image/*" onChange={(event) => void chooseAvatar(event.target.files?.[0])} className="hidden" />
                 </label>
