@@ -39,6 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileReady, setProfileReady] = useState(false);
   const [initializationFailed, setInitializationFailed] = useState(false);
   const requestVersion = useRef(0);
+  // Once a user's durable workspace has been confirmed, session refreshes
+  // should revalidate quietly. Supabase can refresh a token when a tab regains
+  // focus; treating that event as fresh onboarding flashes the full loader.
+  const readyUserId = useRef<string | undefined>(undefined);
   useEffect(() => {
     const supabase = getBrowserSupabase();
     if (!supabase) return;
@@ -47,20 +51,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setScapeCacheOwner(next?.user.id);
       setSession(next);
       setLoading(false);
-      setProfileReady(!next);
+      const needsSetupGate = Boolean(next && readyUserId.current !== next.user.id);
+      setProfileReady(next ? !needsSetupGate : true);
       setInitializationFailed(false);
-      if (!next) return;
+      if (!next) { readyUserId.current = undefined; return; }
       // Validate the durable profile and deterministic personal Scape for
       // every authenticated session. A client-side “ready” flag can outlive a
       // deleted or partial server row and previously produced empty dashboards.
       void initialize(next).then(({ state, createdPersonalScape }) => {
         if (createdPersonalScape) window.sessionStorage.setItem(`deepscapes-show-help:${next.user.id}`, "true");
         if (version === requestVersion.current) {
-          // Do not show a newly authenticated user an empty dashboard before
-          // their durable profile and personal Scape are confirmed. A failed
-          // attempt stays recoverable rather than pretending setup succeeded.
-          setProfileReady(state === "ready");
-          setInitializationFailed(state === "failed");
+          if (state === "ready") {
+            readyUserId.current = next.user.id;
+            setProfileReady(true);
+            setInitializationFailed(false);
+          } else if (needsSetupGate) {
+            // A genuinely new or incomplete account must still wait until its
+            // personal Scape is durable. Existing workspaces never disappear
+            // just because a background revalidation was interrupted.
+            setProfileReady(false);
+            setInitializationFailed(state === "failed");
+          }
         }
       });
     };
@@ -68,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => applySession(next));
     return () => subscription.subscription.unsubscribe();
   }, []);
-  const value = useMemo<AuthValue>(() => ({ user: session?.user ?? null, loading, profileReady, initializationFailed, signOut: async () => { requestVersion.current += 1; setScapeCacheOwner(undefined); setSession(null); setProfileReady(true); setInitializationFailed(false); await getBrowserSupabase()?.auth.signOut(); } }), [session, loading, profileReady, initializationFailed]);
+  const value = useMemo<AuthValue>(() => ({ user: session?.user ?? null, loading, profileReady, initializationFailed, signOut: async () => { requestVersion.current += 1; readyUserId.current = undefined; setScapeCacheOwner(undefined); setSession(null); setProfileReady(true); setInitializationFailed(false); await getBrowserSupabase()?.auth.signOut(); } }), [session, loading, profileReady, initializationFailed]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
