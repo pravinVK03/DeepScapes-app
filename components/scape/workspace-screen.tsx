@@ -13,7 +13,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { ShareScape } from "@/components/scape/share-scape";
 import { ImageCropDialog } from "@/components/ui/image-crop-dialog";
-import { PageLoader } from "@/components/ui/page-loader";
+import { DeferredPageLoader } from "@/components/ui/deferred-page-loader";
 import { useNotifications } from "@/components/ui/notification-center";
 
 const sections: { label: string; type: ResourceType; icon: string }[] = [
@@ -88,7 +88,7 @@ export default function WorkspaceScreen() {
   }, [scape]);
   const activeLoadError = loadError?.id === params.id ? loadError.message : "";
   const isPendingFullLoad = !scape || (Boolean(scape.summary) && (!scape.resources || scape.resources.length === 0));
-  if (isPendingFullLoad) { if (!activeLoadError) return <PageLoader title="Opening your Scape…" description="Preparing your workspace." showMessage />; return <main className="min-h-screen"><AppHeader /><section className="mx-auto max-w-7xl px-5 py-12"><div className="max-w-md rounded-2xl border border-[#e5e8e2] bg-white p-6 shadow-sm"><p className="text-sm font-medium">This Scape needs another try.</p><p className="mt-2 text-sm text-[#718077]">{activeLoadError}</p><button onClick={() => { setLoadError(undefined); setLoadAttempt((attempt) => attempt + 1); }} className="mt-4 rounded-lg bg-[#315443] px-4 py-2 text-sm font-medium text-white">Retry</button></div></section></main>; }
+  if (isPendingFullLoad) { if (!activeLoadError) return <DeferredPageLoader title="Opening your Scape…" description="Preparing your workspace." />; return <main className="min-h-screen"><AppHeader /><section className="mx-auto max-w-7xl px-5 py-12"><div className="max-w-md rounded-2xl border border-[#e5e8e2] bg-white p-6 shadow-sm"><p className="text-sm font-medium">This Scape needs another try.</p><p className="mt-2 text-sm text-[#718077]">{activeLoadError}</p><button onClick={() => { setLoadError(undefined); setLoadAttempt((attempt) => attempt + 1); }} className="mt-4 rounded-lg bg-[#315443] px-4 py-2 text-sm font-medium text-white">Retry</button></div></section></main>; }
   const canEdit = scape.ownerId === user?.id || scape.collaborators?.some((person) => (person.id === user?.id || person.email === user?.email) && person.permission === "edit") === true;
   const update = (next: Scape) => saveScape(next);
   function showNotice(text: string, tone: "success" | "error" = "success") { notify({ tone, title: tone === "error" ? "Action needs attention" : "Scape updated", detail: text }); }

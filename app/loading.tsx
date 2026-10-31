@@ -1,2 +1,5 @@
-import { PageLoader } from "@/components/ui/page-loader";
-export default function Loading() { return <PageLoader title="Opening DeepScapes…" description="Putting your workspace in place." />; }
+import { NavigationProgress } from "@/components/ui/navigation-progress";
+
+// The root fallback wraps every route. Keep ordinary navigation lightweight;
+// individual blocking flows opt into the branded loader below their own route.
+export default function Loading() { return <NavigationProgress />; }

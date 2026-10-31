@@ -8,7 +8,7 @@ import { Icon } from "@/components/ui/icons";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Resource } from "@/lib/mock-data";
 import { loadRemoteScape, newId, saveScape, useScape } from "@/lib/scape-store";
-import { PageLoader } from "@/components/ui/page-loader";
+import { DeferredPageLoader } from "@/components/ui/deferred-page-loader";
 
 const log = (action: string, detail: string) => ({ id: newId("activity"), action, detail, time: new Date().toISOString() });
 function extension(title: string) { const part = title.split(".").pop(); return part && part !== title ? part.toUpperCase() : "FILE"; }
@@ -44,7 +44,7 @@ export default function ResourceViewer() {
     return () => { active = false; };
   }, [params.id, params.resourceId]);
 
-  if (loading && (!scape || !resource)) return <PageLoader title="Opening your resource…" description="Preparing the item in your Scape." showMessage />;
+  if (loading && (!scape || !resource)) return <DeferredPageLoader title="Opening your resource…" description="Preparing the item in your Scape." />;
 
   if (!scape || !resource) {
     return (
