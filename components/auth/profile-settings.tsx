@@ -14,7 +14,7 @@ type Preference = "system" | "light" | "dark";
 function ProfilePreview({ avatar, className, alt }: { avatar: string; className: string; alt: string }) {
   const hasImage = /^(data:image\/|https?:\/\/)/i.test(avatar);
   return <span className={`profile-settings-avatar grid shrink-0 place-items-center overflow-hidden bg-[#edf0df] text-xl ${className}`}>
-    {hasImage ? <img src={avatar} alt={alt} className="h-full w-full object-cover" /> : avatar || "🌿"}
+    {hasImage ? <img src={avatar} alt={alt} className="h-full w-full object-cover" /> : avatar && avatar !== "🌿" ? avatar : <Icon name="user" className="h-6 w-6 text-[#315443]" />}
   </span>;
 }
 
@@ -24,7 +24,7 @@ export function ProfileSettings() {
   const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const username = typeof metadata.username === "string" ? metadata.username : "";
   const [displayName, setDisplayName] = useState(typeof metadata.display_name === "string" ? metadata.display_name : "");
-  const [avatar, setAvatar] = useState(typeof metadata.avatar === "string" ? metadata.avatar : "🌿");
+  const [avatar, setAvatar] = useState(typeof metadata.avatar === "string" ? metadata.avatar : "");
   const [preference, setPreference] = useState<Preference>(metadata.appearance_preference === "light" || metadata.appearance_preference === "dark" ? metadata.appearance_preference : "system");
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);

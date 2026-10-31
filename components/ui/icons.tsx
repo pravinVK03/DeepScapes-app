@@ -8,6 +8,7 @@ const paths: Record<string, string> = {
   more: "M12 5h.01M12 12h.01M12 19h.01",
   moreVertical: "M12 5h.01M12 12h.01M12 19h.01",
   bell: "M18 9a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4",
+  user: "M20 21a8 8 0 0 0-16 0M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8",
   note: "M5 3h14v18H5zM8 8h8M8 12h8",
   task: "m5 12 4 4L19 6",
   file: "M6 2h8l4 4v16H6zM14 2v5h5",

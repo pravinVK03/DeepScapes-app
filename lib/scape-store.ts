@@ -2,14 +2,30 @@
 import { useSyncExternalStore } from "react";
 import { Scape, starterScapes } from "./mock-data";
 import { getBrowserSupabase } from "./supabase-browser";
-const key = "deepscapes-data";
+const keyPrefix = "deepscapes-data:v2";
 const changeEvent = "deepscapes-change";
+let cacheOwnerId: string | undefined;
 let cachedRaw: string | null | undefined;
 let cachedScapes: Scape[] = starterScapes;
 let remoteScapesRequest: Promise<Scape[] | undefined> | undefined;
 const remoteScapeRequests = new Map<string, Promise<Scape | undefined>>();
 let lastRemoteScapesSync = 0;
 const remoteSyncWindowMs = 5 * 60 * 1000;
+
+function cacheKey() { return `${keyPrefix}:${cacheOwnerId || "anonymous"}`; }
+
+// Account data must never survive a sign-out into a different signed-in
+// account. The provider calls this before any dashboard read is allowed.
+export function setScapeCacheOwner(userId?: string) {
+  if (cacheOwnerId === userId) return;
+  cacheOwnerId = userId;
+  cachedRaw = undefined;
+  cachedScapes = starterScapes;
+  lastRemoteScapesSync = 0;
+  remoteScapesRequest = undefined;
+  remoteScapeRequests.clear();
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(changeEvent));
+}
 
 function warmVisibleCovers(scapes: Scape[]) {
   if (typeof Image === "undefined") return;
@@ -65,7 +81,7 @@ function dedupeScapes(scapes: Scape[]) {
 export function getScapes(): Scape[] {
   if (typeof window === "undefined") return starterScapes;
   let saved: string | null;
-  try { saved = localStorage.getItem(key); } catch { return cachedScapes; }
+  try { saved = localStorage.getItem(cacheKey()); } catch { return cachedScapes; }
   if (saved === cachedRaw) return cachedScapes;
   try {
     const parsed = saved ? JSON.parse(saved) : starterScapes;
@@ -77,7 +93,7 @@ export function getScapes(): Scape[] {
     // from opening. The server copy remains the source of truth.
     cachedRaw = saved;
     cachedScapes = starterScapes;
-    try { localStorage.removeItem(key); } catch { /* Storage may be unavailable. */ }
+    try { localStorage.removeItem(cacheKey()); } catch { /* Storage may be unavailable. */ }
   }
   return cachedScapes;
 }
@@ -85,7 +101,7 @@ export function getScapes(): Scape[] {
 export function saveScapes(scapes: Scape[]) {
   cachedScapes = dedupeScapes(scapes);
   cachedRaw = JSON.stringify(cachedScapes);
-  try { localStorage.setItem(key, cachedRaw); } catch { /* Continue with in-memory data and cloud persistence. */ }
+  try { localStorage.setItem(cacheKey(), cachedRaw); } catch { /* Continue with in-memory data and cloud persistence. */ }
   window.dispatchEvent(new Event(changeEvent));
 }
 export function getScape(id: string) { return getScapes().find((scape) => scape.id === id); }

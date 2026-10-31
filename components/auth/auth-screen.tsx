@@ -8,6 +8,7 @@ import { AppHeader } from "@/components/ui/app-header";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { useAuth } from "@/components/auth/auth-provider";
 import { PageLoader } from "@/components/ui/page-loader";
+import { Icon } from "@/components/ui/icons";
 
 export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const router = useRouter();
@@ -25,7 +26,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
   const [signupStage, setSignupStage] = useState<"email" | "profile">("email");
   const [displayName, setDisplayName] = useState("");
-  const [avatar, setAvatar] = useState("🌿");
+  const [avatar, setAvatar] = useState("");
   const [appearancePreference, setAppearancePreference] = useState<"system" | "light" | "dark">("system");
   const [confirmationSent, setConfirmationSent] = useState(false);
   const [message, setMessage] = useState("");
@@ -428,7 +429,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
                 <legend className="text-sm font-medium">Choose an avatar</legend>
                 <div className="mt-2 flex flex-wrap gap-2">{["🌿", "✦", "☁️", "◉", "◆", "☼"].map((option) => <button key={option} type="button" onClick={() => setAvatar(option)} aria-label={`Use ${option} as your avatar`} aria-pressed={avatar === option} className={`grid h-11 w-11 place-items-center rounded-full border text-lg transition hover:-translate-y-0.5 ${avatar === option ? "border-[#315443] bg-[#edf0df]" : "border-[#dce1d9] bg-white"}`}>{option}</button>)}</div>
                 <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-[#dce1d9] px-3 py-2 text-sm text-[#718077] hover:border-[#315443] hover:text-[#315443]">
-                  <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-[#edf0df] text-base">{avatar.startsWith("data:image/") ? <img src={avatar} alt="Selected profile preview" className="h-full w-full object-cover" /> : avatar}</span>
+                  <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-[#edf0df] text-base">{avatar.startsWith("data:image/") ? <img src={avatar} alt="Selected profile preview" className="h-full w-full object-cover" /> : avatar || <Icon name="user" className="h-5 w-5 text-[#315443]" />}</span>
                   Upload a profile image
                   <input type="file" accept="image/*" onChange={(event) => void chooseAvatar(event.target.files?.[0])} className="hidden" />
                 </label>

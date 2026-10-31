@@ -98,7 +98,16 @@ export async function POST(request: Request) {
   const { error } = await supabase.from("scapes").upsert({ id: scape.id, payload: scape, owner_id: ownerId, title: scape.title, description: scape.description, template: scape.template, cover_value: cover.value, cover_path: cover.path || null, cover_position: scape.coverPosition || null, cover_zoom: scape.coverZoom || null, starred: Boolean(scape.starred), archived: Boolean(scape.archived), hidden_sections: scape.hiddenSections || [], updated_at: now }, { onConflict: "id" });
   if (error) return Response.json({ error: error.message }, { status: 500 });
   await Promise.all([supabase.from("scape_collaborators").delete().eq("scape_id", scape.id), supabase.from("scape_resources").delete().eq("scape_id", scape.id), supabase.from("scape_activity").delete().eq("scape_id", scape.id), supabase.from("scape_browser_sessions").delete().eq("scape_id", scape.id), supabase.from("scape_browser_events").delete().eq("scape_id", scape.id), supabase.from("scape_browser_state").delete().eq("scape_id", scape.id)]);
-  const people = scape.collaborators?.map((item) => ({ scape_id: scape.id, collaborator_key: item.id || item.email, user_id: item.id || null, email: item.email || null, name: item.name || "", permission: item.permission, pending: Boolean(item.pending) })) || [];
+  const collaboratorEmails = [...new Set((scape.collaborators || []).map((item) => item.email?.trim().toLowerCase()).filter((email): email is string => Boolean(email)))];
+  const matchedProfiles = collaboratorEmails.length ? await supabase.from("profiles").select("id,email").in("email", collaboratorEmails) : { data: [], error: null };
+  if (matchedProfiles.error) return Response.json({ error: matchedProfiles.error.message }, { status: 500 });
+  const profileIds = new Map((matchedProfiles.data || []).map((profile) => [text(profile.email).toLowerCase(), text(profile.id)]));
+  const people = (scape.collaborators || []).map((item) => {
+    const email = item.email?.trim().toLowerCase() || "";
+    const suppliedUserId = item.id && !item.id.startsWith("collaborator-") ? item.id : undefined;
+    const userId = profileIds.get(email) || suppliedUserId || null;
+    return { scape_id: scape.id, collaborator_key: userId ? `user:${userId}` : `email:${email}`, user_id: userId, email: email || null, name: item.name || "", permission: item.permission, pending: Boolean(item.pending) };
+  });
   const resources = scape.resources.map((item) => ({ id: item.id, scape_id: scape.id, type: item.type, title: item.title, detail: item.detail || "", occurred_at: /^\d{4}-/.test(item.date || "") ? item.date : now, done: Boolean(item.done), starred: Boolean(item.starred), group_name: item.group || null, content: item.content || null, download_url: item.downloadUrl || null, mime_type: item.mimeType || null, updated_at: now }));
   const activities = scape.activity.map((item) => ({ id: item.id, scape_id: scape.id, action: item.action, detail: item.detail || "", occurred_at: /^\d{4}-/.test(item.time || "") ? item.time : now, actor_id: user.id, actor_name: text(user.user_metadata?.username, user.email?.split("@")[0] || "Collaborator"), actor_email: user.email || null }));
   const browser = scape.browser;

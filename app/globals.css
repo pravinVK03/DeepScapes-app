@@ -285,4 +285,7 @@ html.dark .profile-upload-control:hover, html.dark .profile-appearance-option:ho
 .share-close:hover { background: #edf0df; color: #17231d; }
 html.dark .share-close:hover { background: #2a2a2a !important; color: #fff !important; }
 html.dark .share-member { background: #1d1d1d !important; border-color: #3a3a3a !important; }
+html.dark .profile-settings-intro, html.dark .profile-settings-panel, html.dark .profile-settings-panel strong, html.dark .profile-menu-identity, html.dark .profile-menu-identity p { color: #f5f5f5 !important; }
+html.dark .profile-settings-panel input, html.dark .profile-settings-panel textarea { color: #f5f5f5 !important; background: #171717 !important; }
+html.dark .profile-settings-panel small, html.dark .profile-settings-panel .text-\[\#718077\], html.dark .profile-menu-identity .text-\[\#718077\] { color: #b8b8b8 !important; }
 
