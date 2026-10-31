@@ -121,7 +121,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
           </div>}
           {user ? <div ref={profileRef} className="relative">
             <button onClick={() => setProfileOpen((open) => !open)} className="profile-trigger flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition" aria-expanded={profileOpen} aria-label="Open profile menu">
-              <span className="profile-avatar grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#315443] text-xs font-semibold text-white">{avatarImage ? <Image src={avatar} alt="" width={24} height={24} unoptimized className="h-full w-full object-cover" /> : <Icon name="user" className="h-4 w-4" />}</span>
+              <span className="profile-avatar grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#315443] text-xs font-semibold text-white">{avatarImage ? <Image src={avatar} alt="" width={24} height={24} unoptimized className="h-full w-full object-cover" /> : <Icon name="user" className="profile-avatar-icon h-4 w-4" strokeWidth={2.25} />}</span>
               <span className="hidden max-w-28 truncate sm:inline">{displayName}</span>
             </button>
             {profileOpen && <div className="profile-menu absolute right-0 z-40 mt-2 w-72 overflow-hidden rounded-xl border border-[#dce1d9] p-2 shadow-xl">

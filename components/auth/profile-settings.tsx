@@ -14,7 +14,7 @@ type Preference = "system" | "light" | "dark";
 function ProfilePreview({ avatar, className, alt }: { avatar: string; className: string; alt: string }) {
   const hasImage = /^(data:image\/|https?:\/\/)/i.test(avatar);
   return <span className={`profile-settings-avatar grid shrink-0 place-items-center overflow-hidden bg-[#edf0df] text-xl ${className}`}>
-    {hasImage ? <img src={avatar} alt={alt} className="h-full w-full object-cover" /> : avatar && avatar !== "🌿" ? avatar : <Icon name="user" className="h-6 w-6 text-[#315443]" />}
+    {hasImage ? <img src={avatar} alt={alt} className="h-full w-full object-cover" /> : avatar && avatar !== "🌿" ? avatar : <Icon name="user" className="profile-settings-avatar-icon h-6 w-6" strokeWidth={2.25} />}
   </span>;
 }
 

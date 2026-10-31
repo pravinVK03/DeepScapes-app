@@ -151,6 +151,8 @@ html.dark .profile-trigger[aria-expanded="true"] {
 
 html.dark .profile-trigger > span:last-child { color: #f5f5f5 !important; }
 html.dark .profile-avatar { background-color: #242424 !important; }
+.profile-avatar-icon { color: #fff; }
+html.dark .profile-avatar-icon { color: #f5f5f5 !important; }
 html.dark .google-auth-button, html.dark .google-auth-button * { background: #f5f5f5 !important; border-color: #f5f5f5 !important; color: #111 !important; }
 html.dark .google-auth-button:hover, html.dark .google-auth-button:hover * { background: #dedede !important; border-color: #fff !important; color: #111 !important; }
 html.dark .auth-primary-action, html.dark .auth-primary-action * { color: #111 !important; }
@@ -280,6 +282,8 @@ html.dark .notification-menu-item:hover { background: #292929 !important; color:
 html.dark .notification-menu-mark { background: #2c2c2c; color: #f5f5f5; }
 html.dark .profile-settings-panel, html.dark .profile-identity-card { border-color: #3a3a3a !important; background: #181818 !important; box-shadow: 0 18px 42px rgb(0 0 0 / .32); }
 html.dark .profile-settings-avatar { background-color: #2a2a2a !important; color: #f5f5f5 !important; }
+.profile-settings-avatar-icon { color: #315443; }
+html.dark .profile-settings-avatar-icon { color: #f5f5f5 !important; }
 html.dark .profile-upload-control:hover, html.dark .profile-appearance-option:hover { border-color: #646464 !important; background: #242424 !important; color: #fff !important; }
 
 .share-close:hover { background: #edf0df; color: #17231d; }
