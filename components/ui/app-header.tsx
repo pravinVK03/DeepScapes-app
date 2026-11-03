@@ -17,6 +17,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [invitations, setInvitations] = useState<Scape[]>([]);
+  const [readInvitationIds, setReadInvitationIds] = useState<Set<string>>(new Set());
   const [gmailMessage, setGmailMessage] = useState("");
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [canConnectGmail, setCanConnectGmail] = useState(false);
@@ -35,6 +36,8 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
   const displayName = typeof user?.user_metadata.display_name === "string" ? user.user_metadata.display_name : username;
   const avatar = typeof user?.user_metadata.avatar === "string" ? user.user_metadata.avatar : "";
   const avatarImage = /^(data:image\/|https?:\/\/)/i.test(avatar);
+  const unreadInvitations = invitations.filter((scape) => !readInvitationIds.has(scape.id));
+  const relativeTime = (value?: string) => { const elapsed = value ? Date.now() - new Date(value).getTime() : NaN; if (!Number.isFinite(elapsed) || elapsed < 60_000) return "Just now"; const minutes = Math.floor(elapsed / 60_000); return minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`; };
 
   useEffect(() => {
     if (!profileOpen && !notificationsOpen) return;
@@ -47,12 +50,20 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
 
   useEffect(() => {
     if (!user) return;
+    try { setReadInvitationIds(new Set(JSON.parse(window.localStorage.getItem(`deepscapes-read-invitations:${user.id}`) || "[]") as string[])); } catch { setReadInvitationIds(new Set()); }
     let active = true;
     // Invites must not wait for the dashboard's five-minute Scape cache.
     // This is a one-time, deduplicated refresh when the signed-in header mounts.
     void loadRemoteScapes({ force: true }).then((scapes) => { if (active && scapes) setInvitations(scapes.filter((scape) => scape.pendingInvite)); });
     return () => { active = false; };
   }, [user]);
+
+  function markInvitationsRead() {
+    if (!user || !unreadInvitations.length) return;
+    const next = new Set([...readInvitationIds, ...unreadInvitations.map((scape) => scape.id)]);
+    setReadInvitationIds(next);
+    window.localStorage.setItem(`deepscapes-read-invitations:${user.id}`, JSON.stringify([...next]));
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -123,11 +134,11 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
         </div>
         <div className="flex items-center gap-2">
           {user && <div ref={notificationRef} className="relative">
-            <button type="button" onClick={() => { setProfileOpen(false); setNotificationsOpen((open) => !open); }} className="notification-trigger relative grid h-9 w-9 place-items-center rounded-lg border border-[#dce1d9] text-[#4e6056] transition" aria-expanded={notificationsOpen} aria-label={`${invitations.length ? `${invitations.length} collaboration invitation${invitations.length === 1 ? "" : "s"}` : "Open notifications"}`}>
+            <button type="button" onClick={() => { setProfileOpen(false); setNotificationsOpen((open) => { if (!open) markInvitationsRead(); return !open; }); }} className="notification-trigger relative grid h-9 w-9 place-items-center rounded-lg border border-[#dce1d9] text-[#4e6056] transition" aria-expanded={notificationsOpen} aria-label={`${unreadInvitations.length ? `${unreadInvitations.length} unread collaboration invitation${unreadInvitations.length === 1 ? "" : "s"}` : "Open notifications"}`}>
               <Icon name="bell" className="h-4 w-4" />
-              {invitations.length > 0 && <span className="notification-badge" aria-hidden="true">{invitations.length > 9 ? "9+" : invitations.length}</span>}
+              {unreadInvitations.length > 0 && <span className="notification-badge" aria-hidden="true">{unreadInvitations.length > 9 ? "9+" : unreadInvitations.length}</span>}
             </button>
-            {notificationsOpen && <div className="notification-menu absolute right-0 z-40 mt-2 w-[min(22rem,calc(100vw-2.5rem))] overflow-hidden rounded-xl border border-[#dce1d9] bg-white p-2 shadow-xl"><div className="flex items-center justify-between px-3 py-2"><div><p className="text-sm font-semibold">Notifications</p><p className="mt-0.5 text-xs text-[#718077]">Collaboration and workspace updates</p></div>{invitations.length > 0 && <span className="rounded-full bg-[#edf0df] px-2 py-1 text-xs font-medium text-[#315443]">{invitations.length} new</span>}</div><div className="notification-menu-list border-t border-[#e5e8e2] pt-1">{invitations.length ? invitations.map((scape) => <button key={scape.id} type="button" onClick={() => { setNotificationsOpen(false); router.push(`/workspace/${scape.id}`); }} className="notification-menu-item w-full"><span className="notification-menu-mark"><Icon name="share" className="h-4 w-4" /></span><span className="min-w-0 flex-1 text-left"><strong className="block truncate text-sm">Invitation to {scape.title}</strong><small className="mt-0.5 block truncate text-xs text-[#718077]">You can {scape.invitePermission === "edit" ? "edit" : "view"} this Scape.</small></span><Icon name="arrow" className="h-4 w-4 text-[#718077]" /></button>) : <div className="px-3 py-7 text-center"><span className="notification-menu-mark mx-auto"><Icon name="bell" className="h-4 w-4" /></span><p className="mt-3 text-sm font-medium">You&apos;re all caught up.</p><p className="mt-1 text-xs text-[#718077]">Collaboration invitations will appear here.</p></div>}</div></div>}
+            {notificationsOpen && <div className="notification-menu absolute right-0 z-40 mt-2 w-[min(22rem,calc(100vw-2.5rem))] overflow-hidden rounded-xl border border-[#dce1d9] bg-white p-2 shadow-xl"><div className="flex items-center justify-between px-3 py-2"><div><p className="text-sm font-semibold">Notifications</p><p className="mt-0.5 text-xs text-[#718077]">Collaboration and workspace updates</p></div>{unreadInvitations.length > 0 && <span className="rounded-full bg-[#edf0df] px-2 py-1 text-xs font-medium text-[#315443]">{unreadInvitations.length} new</span>}</div><div className="notification-menu-list border-t border-[#e5e8e2] pt-1">{invitations.length ? invitations.map((scape) => <button key={scape.id} type="button" onClick={() => { setNotificationsOpen(false); router.push(`/workspace/${scape.id}`); }} className="notification-menu-item w-full"><span className="notification-menu-mark"><Icon name="share" className="h-4 w-4" /></span><span className="min-w-0 flex-1 text-left"><strong className="block truncate text-sm">Invitation to {scape.title}</strong><small className="mt-0.5 block truncate text-xs text-[#718077]">You can {scape.invitePermission === "edit" ? "edit" : "view"} this Scape · {relativeTime(scape.updatedAt)}</small></span><Icon name="arrow" className="h-4 w-4 text-[#718077]" /></button>) : <div className="px-3 py-7 text-center"><span className="notification-menu-mark mx-auto"><Icon name="bell" className="h-4 w-4" /></span><p className="mt-3 text-sm font-medium">You&apos;re all caught up.</p><p className="mt-1 text-xs text-[#718077]">Collaboration invitations will appear here.</p></div>}</div></div>}
           </div>}
           {user ? <div ref={profileRef} className="relative">
             <button onClick={() => setProfileOpen((open) => !open)} className="profile-trigger flex h-9 items-center gap-2 rounded-lg border border-[#dce1d9] px-2 text-sm transition" aria-expanded={profileOpen} aria-label="Open profile menu">
