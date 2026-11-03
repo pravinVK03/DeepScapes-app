@@ -18,6 +18,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [invitations, setInvitations] = useState<Scape[]>([]);
   const [readInvitationIds, setReadInvitationIds] = useState<Set<string>>(new Set());
+  const [notificationClock, setNotificationClock] = useState(0);
   const [gmailMessage, setGmailMessage] = useState("");
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [canConnectGmail, setCanConnectGmail] = useState(false);
@@ -37,7 +38,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
   const avatar = typeof user?.user_metadata.avatar === "string" ? user.user_metadata.avatar : "";
   const avatarImage = /^(data:image\/|https?:\/\/)/i.test(avatar);
   const unreadInvitations = invitations.filter((scape) => !readInvitationIds.has(scape.id));
-  const relativeTime = (value?: string) => { const elapsed = value ? Date.now() - new Date(value).getTime() : NaN; if (!Number.isFinite(elapsed) || elapsed < 60_000) return "Just now"; const minutes = Math.floor(elapsed / 60_000); return minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`; };
+  const relativeTime = (value?: string) => { const elapsed = value ? notificationClock - new Date(value).getTime() : NaN; if (!Number.isFinite(elapsed) || elapsed < 60_000) return "Just now"; const minutes = Math.floor(elapsed / 60_000); return minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`; };
 
   useEffect(() => {
     if (!profileOpen && !notificationsOpen) return;
@@ -49,13 +50,21 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
   }, [notificationsOpen, profileOpen]);
 
   useEffect(() => {
+    if (!notificationsOpen) return;
+    const timer = window.setTimeout(() => setNotificationClock(Date.now()), 0);
+    return () => window.clearTimeout(timer);
+  }, [notificationsOpen]);
+
+  useEffect(() => {
     if (!user) return;
-    try { setReadInvitationIds(new Set(JSON.parse(window.localStorage.getItem(`deepscapes-read-invitations:${user.id}`) || "[]") as string[])); } catch { setReadInvitationIds(new Set()); }
+    const timer = window.setTimeout(() => {
+      try { setReadInvitationIds(new Set(JSON.parse(window.localStorage.getItem(`deepscapes-read-invitations:${user.id}`) || "[]") as string[])); } catch { setReadInvitationIds(new Set()); }
+    }, 0);
     let active = true;
     // Invites must not wait for the dashboard's five-minute Scape cache.
     // This is a one-time, deduplicated refresh when the signed-in header mounts.
     void loadRemoteScapes({ force: true }).then((scapes) => { if (active && scapes) setInvitations(scapes.filter((scape) => scape.pendingInvite)); });
-    return () => { active = false; };
+    return () => { window.clearTimeout(timer); active = false; };
   }, [user]);
 
   function markInvitationsRead() {
