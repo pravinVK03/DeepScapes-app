@@ -31,6 +31,13 @@ export default function TimelineScreen() {
   const params = useParams<{ id: string }>();
   const scape = useScape(params.id);
   const [loading, setLoading] = useState(!scape || Boolean(scape.summary));
+  const activities = useMemo(() => scape?.activity || [], [scape?.activity]);
+  const activityGroups = useMemo(() => activities.reduce<Record<string, typeof activities>>((groups, item) => {
+    const date = new Date(item.time);
+    const key = Number.isNaN(date.getTime()) ? "unknown" : date.toISOString().slice(0, 10);
+    (groups[key] ||= []).push(item);
+    return groups;
+  }, {}), [activities]);
 
   useEffect(() => {
     if (!params.id) return;
@@ -62,13 +69,6 @@ export default function TimelineScreen() {
   }
 
   const workspace = "/workspace/" + scape.id;
-  const activities = scape.activity || [];
-  const activityGroups = useMemo(() => activities.reduce<Record<string, typeof activities>>((groups, item) => {
-    const date = new Date(item.time);
-    const key = Number.isNaN(date.getTime()) ? "unknown" : date.toISOString().slice(0, 10);
-    (groups[key] ||= []).push(item);
-    return groups;
-  }, {}), [activities]);
 
   return (
     <main className="min-h-screen">
