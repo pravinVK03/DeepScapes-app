@@ -181,6 +181,11 @@ export async function loadRemoteScapes({ force = false }: { force?: boolean } = 
       // before React commits the cards. The browser cache then makes their
       // visible render immediate without preloading an entire large library.
       warmVisibleCovers(data.scapes);
+      // A dashboard fetch is the reconciliation point between devices. Commit
+      // it here instead of relying on every caller to merge the result; that
+      // previously left an open desktop tab showing stale mobile data until a
+      // separate action happened to save the Scape again.
+      saveScapes([...data.scapes, ...getScapes()]);
       lastRemoteScapesSync = Date.now();
       if (syncKey) window.sessionStorage.setItem(syncKey, String(lastRemoteScapesSync));
       return data.scapes;
@@ -215,7 +220,16 @@ export async function loadRemoteScape(id: string): Promise<Scape | undefined> {
   }
 }
 
-function subscribe(onStoreChange: () => void) { window.addEventListener(changeEvent, onStoreChange); return () => window.removeEventListener(changeEvent, onStoreChange); }
+function subscribe(onStoreChange: () => void) {
+  const syncAcrossTabs = (event: StorageEvent) => {
+    if (event.key !== cacheKey()) return;
+    cachedRaw = undefined;
+    onStoreChange();
+  };
+  window.addEventListener(changeEvent, onStoreChange);
+  window.addEventListener("storage", syncAcrossTabs);
+  return () => { window.removeEventListener(changeEvent, onStoreChange); window.removeEventListener("storage", syncAcrossTabs); };
+}
 const serverSnapshot: Scape[] = [];
 export function useScapes() { return useSyncExternalStore(subscribe, getScapes, () => serverSnapshot); }
 export function useScape(id: string) { const scapes = useScapes(); return scapes.find((scape) => scape.id === id); }

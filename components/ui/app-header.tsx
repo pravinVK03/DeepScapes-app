@@ -54,6 +54,16 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
     return () => { active = false; };
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+    // Reconcile after a phone/desktop switch without polling continuously.
+    // The store merges safely and only redraws if the server has newer data.
+    const refresh = () => { if (!document.hidden) void loadRemoteScapes({ force: true }); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [user]);
+
   const checkedGmailOwner = useRef(false);
 
   useEffect(() => {
