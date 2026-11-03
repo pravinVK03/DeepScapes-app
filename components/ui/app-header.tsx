@@ -126,7 +126,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
             </button>
             {profileOpen && <div className="profile-menu absolute right-0 z-40 mt-2 w-72 overflow-hidden rounded-xl border border-[#dce1d9] p-2 shadow-xl">
               <div className="profile-menu-identity px-3 pb-3 pt-2"><p className="truncate text-sm font-semibold">{displayName}</p><p className="mt-1 truncate text-xs text-[#718077]">{user.email}</p></div>
-              <div className="py-2">
+              <div className="profile-menu-actions py-2">
                 <Link href="/settings/profile" onClick={() => setProfileOpen(false)} className="profile-menu-action"><Icon name="note" className="h-4 w-4" />Profile settings</Link>
                 <Link href="/help" onClick={() => setProfileOpen(false)} className="profile-menu-action"><Icon name="help" className="h-4 w-4" />Help &amp; guide</Link>
               </div>
@@ -144,7 +144,7 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
                   <span className="text-sm text-[#718077]">Dark</span>
                 </div>
               </div>
-              <div className="profile-menu-section pt-2"><button onClick={() => { setProfileOpen(false); void signOut(); }} className="profile-signout profile-menu-action w-full text-[#a95b54]">Sign out</button></div>
+              <div className="profile-menu-section pt-2"><button onClick={() => { setProfileOpen(false); void signOut(); }} className="profile-signout profile-menu-action w-full text-[#a95b54]"><Icon name="logout" className="h-4 w-4" />Sign out</button></div>
             </div>}
           </div> : !loading && !compact && <Link href="/login" className="hidden rounded-lg px-2 py-2 text-sm text-[#718077] sm:block">Sign in</Link>}
           {!compact && user && <Link href="/create" className="inline-flex items-center gap-2 rounded-lg bg-[#315443] px-3.5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#254235]"><Icon name="plus" className="h-4 w-4" /><span className="hidden sm:inline">New Scape</span></Link>}

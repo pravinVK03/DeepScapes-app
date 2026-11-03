@@ -27,6 +27,7 @@ const paths: Record<string, string> = {
   maximize: "M8 3H3v5M3 3l6 6M16 3h5v5M21 3l-6 6M8 21H3v-5M3 21l6-6M16 21h5v-5M21 21l-6-6",
   minimize: "M3 8h5V3M3 3l6 6M16 3v5h5M21 3l-6 6M3 16h5v5M3 21l6-6M16 21h5v-5M21 21l-6-6",
   help: "M9.1 9a3 3 0 1 1 5.6 1.45c-.92.92-2.7 1.42-2.7 3.55M12 17.5h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0",
+  logout: "M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-5",
 };
 
 export function Icon({ name, className = "", strokeWidth = 1.8 }: IconProps) {
