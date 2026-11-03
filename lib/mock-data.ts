@@ -36,7 +36,7 @@ export const DEFAULT_SCAPE_COVER = "#262626";
 // The former blue fallback was never an intentional user choice. Rendering it
 // as the neutral default also makes existing personal Scapes consistent.
 export function preferredScapeCover(cover?: string) { return !cover || cover === "#1d4ed8" ? DEFAULT_SCAPE_COVER : cover; }
-export type Scape = { id: string; title: string; description: string; template: string; cover: string; coverPosition?: string; coverZoom?: number; updated: string; createdAt?: string; updatedAt?: string; resources: Resource[]; activity: Activity[]; starred?: boolean; archived?: boolean; hiddenSections?: ResourceType[]; ownerId?: string; collaborators?: Collaborator[]; browser?: BrowserState; browserContexts?: Record<string, string>; summary?: boolean; pendingInvite?: boolean; invitePermission?: CollaborationPermission };
+export type Scape = { id: string; title: string; description: string; template: string; cover: string; coverPosition?: string; coverZoom?: number; updated: string; createdAt?: string; updatedAt?: string; resources: Resource[]; activity: Activity[]; starred?: boolean; archived?: boolean; hiddenSections?: ResourceType[]; ownerId?: string; collaborators?: Collaborator[]; browser?: BrowserState; browserContexts?: Record<string, string>; summary?: boolean; pendingInvite?: boolean; invitePermission?: CollaborationPermission; invitationCreatedAt?: string };
 export type Template = { name: string; icon: string; color: string; description: string; sections: string[] };
 export const templates = [
   { name: "Blank Scape", icon: "＋", color: DEFAULT_SCAPE_COVER, description: "A clear, open space for whatever comes next.", sections: [] },

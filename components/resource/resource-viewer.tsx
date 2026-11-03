@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/icons";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Resource } from "@/lib/mock-data";
@@ -23,6 +23,18 @@ async function downloadResource(url: string, name: string) {
   } catch {
     link.href = url; link.target = "_blank"; link.rel = "noreferrer"; link.click();
   }
+}
+
+function isRichNote(value?: string) { return Boolean(value && /<\/?(?:strong|b|em|i|u|ul|ol|li|p|div|br)\b/i.test(value)); }
+function sanitizeRichNote(value: string) {
+  if (typeof window === "undefined") return "";
+  const document = new DOMParser().parseFromString(value, "text/html");
+  const allowed = new Set(["STRONG", "B", "EM", "I", "U", "UL", "OL", "LI", "P", "DIV", "BR"]);
+  for (const element of Array.from(document.body.querySelectorAll("*"))) {
+    if (!allowed.has(element.tagName)) element.replaceWith(document.createTextNode(element.textContent || ""));
+    else for (const attribute of Array.from(element.attributes)) element.removeAttribute(attribute.name);
+  }
+  return document.body.innerHTML;
 }
 
 export default function ResourceViewer() {
@@ -69,8 +81,11 @@ export default function ResourceViewer() {
 }
 
 function Editor({ resource, save, remove }: { resource: Resource; save: (title: string, content: string) => void; remove: () => void }) {
-  const [title, setTitle] = useState(resource.title); const [content, setContent] = useState(resource.content || ""); const isImage = resource.type === "image";
-  return <div className="rounded-[2rem] border border-[#e5e8e2] bg-white p-6 shadow-sm sm:p-10"><p className="text-sm capitalize text-[#718077]">Editing {resource.type}</p><label className="mt-5 block text-xs font-medium uppercase tracking-[.12em] text-[#718077]">{isImage ? "Image name" : "Title"}<input value={title} onChange={(item) => setTitle(item.target.value)} className="mt-2 w-full border-0 text-3xl font-medium tracking-[-.05em] outline-none" /></label>{isImage ? <><div className="mt-7 overflow-hidden rounded-2xl border border-[#e0e5df] bg-[#f7f7f3]"><Image src={resource.content || resource.downloadUrl || ""} alt={title || "Image preview"} width={1200} height={800} unoptimized className="max-h-80 w-full object-contain" /></div><p className="mt-3 text-sm text-[#718077]">Rename the image here. Its secure storage address stays private.</p></> : <textarea value={content} onChange={(item) => setContent(item.target.value)} placeholder="Add some detail..." className="mt-8 min-h-64 w-full resize-none border-0 text-base leading-7 outline-none placeholder:text-[#a4ada6]" />}<div className="mt-5 flex items-center justify-between gap-3"><button onClick={() => save(title, content)} className="rounded-full bg-[#315443] px-5 py-3 text-sm font-medium text-white">Save changes</button><button onClick={remove} className="rounded-full px-4 py-2 text-sm text-[#a95b54] hover:bg-[#f7e8e5]">Delete</button></div></div>;
+  const [title, setTitle] = useState(resource.title); const [content, setContent] = useState(resource.content || ""); const isImage = resource.type === "image"; const noteRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (resource.type === "note" && noteRef.current) noteRef.current.innerHTML = isRichNote(resource.content) ? sanitizeRichNote(resource.content || "") : (resource.content || ""); }, [resource.id, resource.content, resource.type]);
+  const format = (command: "bold" | "italic" | "underline" | "insertUnorderedList" | "insertOrderedList") => { noteRef.current?.focus(); document.execCommand(command); setContent(noteRef.current?.innerHTML || ""); };
+  const saveNote = () => save(title, sanitizeRichNote(noteRef.current?.innerHTML || content));
+  return <div className="rounded-[2rem] bg-white p-6 shadow-sm sm:p-10"><p className="text-sm capitalize text-[#718077]">Editing {resource.type}</p><label className="mt-5 block text-xs font-medium uppercase tracking-[.12em] text-[#718077]">{isImage ? "Image name" : "Title"}<input value={title} onChange={(item) => setTitle(item.target.value)} className="mt-2 w-full border-0 bg-transparent text-3xl font-medium tracking-[-.05em] outline-none" /></label>{isImage ? <><div className="mt-7 overflow-hidden rounded-2xl bg-[#f7f7f3]"><Image src={resource.content || resource.downloadUrl || ""} alt={title || "Image preview"} width={1200} height={800} unoptimized className="max-h-80 w-full object-contain" /></div><p className="mt-3 text-sm text-[#718077]">Rename the image here. Its secure storage address stays private.</p></> : resource.type === "note" ? <><div className="mt-7 flex gap-1 text-sm text-[#718077]"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("bold")} className="rounded px-2 py-1 font-bold hover:bg-[#edf0df]" title="Bold (Ctrl/Cmd+B)">B</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("italic")} className="rounded px-2 py-1 italic hover:bg-[#edf0df]" title="Italic (Ctrl/Cmd+I)">I</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("underline")} className="rounded px-2 py-1 underline hover:bg-[#edf0df]" title="Underline (Ctrl/Cmd+U)">U</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("insertUnorderedList")} className="rounded px-2 py-1 hover:bg-[#edf0df]">• List</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("insertOrderedList")} className="rounded px-2 py-1 hover:bg-[#edf0df]">1. List</button></div><div ref={noteRef} contentEditable suppressContentEditableWarning onInput={(event) => setContent(event.currentTarget.innerHTML)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && ["b", "i", "u"].includes(event.key.toLowerCase())) { event.preventDefault(); format(event.key.toLowerCase() === "b" ? "bold" : event.key.toLowerCase() === "i" ? "italic" : "underline"); } }} className="mt-4 min-h-64 whitespace-pre-wrap text-base leading-7 outline-none empty:before:text-[#a4ada6] empty:before:content-[attr(data-placeholder)]" data-placeholder="Start writing…" /></> : <textarea value={content} onChange={(item) => setContent(item.target.value)} placeholder="Add some detail..." className="mt-8 min-h-64 w-full resize-none border-0 text-base leading-7 outline-none placeholder:text-[#a4ada6]" />}<div className="mt-5 flex items-center justify-between gap-3"><button onClick={() => resource.type === "note" ? saveNote() : save(title, content)} className="rounded-full bg-[#315443] px-5 py-3 text-sm font-medium text-white">Save changes</button><button onClick={remove} className="rounded-full px-4 py-2 text-sm text-[#a95b54] hover:bg-[#f7e8e5]">Delete</button></div></div>;
 }
 
 function Viewer({ resource }: { resource: Resource }) {
@@ -79,7 +94,7 @@ function Viewer({ resource }: { resource: Resource }) {
   const genericFile = resource.type === "file" || resource.type === "image" || resource.type === "video" || resource.type === "audio";
   const downloadUrl = resource.downloadUrl || resource.content;
   return <><p className="text-sm capitalize text-[#718077]">{resource.type} · {resource.date}</p><h1 className="mt-4 break-words text-4xl font-medium tracking-[-.06em] sm:text-6xl">{resource.title}</h1>
-    {resource.type === "note" && <article className="mt-8 max-w-2xl whitespace-pre-wrap text-lg leading-8">{resource.content || "No content yet."}</article>}
+    {resource.type === "note" && <article className="mt-8 max-w-2xl whitespace-pre-wrap text-lg leading-8">{isRichNote(resource.content) ? <div dangerouslySetInnerHTML={{ __html: sanitizeRichNote(resource.content || "") }} /> : resource.content || "No content yet."}</article>}
     {resource.type === "link" && <a href={resource.content || "#"} target="_blank" rel="noreferrer" className="mt-8 block max-w-xl rounded-2xl border border-[#dfe5dd] bg-white p-5 shadow-sm"><Icon name="link" className="h-6 w-6 text-[#315443]" /><p className="mt-4 font-medium">Open reference</p><p className="mt-1 break-all text-sm text-[#718077]">{resource.content || "No URL provided"}</p></a>}
     {resource.type === "task" && <div className="mt-8 rounded-2xl bg-white p-6 shadow-sm"><Icon name="task" className="h-6 w-6 text-[#315443]" /><p className="mt-4 text-lg">{resource.done ? "Complete" : "Not started"}</p></div>}
     {resource.type === "image" && uploaded && <Image src={resource.content!} alt={resource.title} width={1200} height={800} unoptimized className="mt-8 max-h-[32rem] w-full rounded-2xl border border-[#e0e5df] object-contain" />}
