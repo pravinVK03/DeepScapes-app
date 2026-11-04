@@ -175,9 +175,13 @@ html.dark .feedback-category[data-active="true"] {
 }
 
 .feedback-star svg {
-  fill: rgb(255 255 255 / .28);
+  /* Unselected stars need an explicit light-theme contrast; white fills
+     disappear against the feedback panel when light mode is active. */
+  fill: #819087;
   filter: none;
 }
+
+html.dark .feedback-star svg { fill: rgb(255 255 255 / .36); }
 
 .feedback-star:hover svg,
 .feedback-star:focus-visible svg,
