@@ -6,13 +6,58 @@ import { createHash } from "node:crypto";
 export const runtime = "nodejs";
 const maxScapePayloadBytes = 2 * 1024 * 1024;
 const coverBucket = "deepscapes-covers";
+const resourceBucket = "deepscapes-resources";
+const coverUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const resourceUrlCache = new Map<string, { preview: string; download: string; expiresAt: number }>();
 
 async function currentUser(request: Request) { const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, ""); if (!token) return undefined; return (await getSupabase().auth.getUser(token)).data.user; }
 function text(value: unknown, fallback = "") { return typeof value === "string" ? value : fallback; }
 function bool(value: unknown) { return value === true || value === "true"; }
 function access(scape: Scape, userId: string, email?: string, edit = false) { if (scape.ownerId === userId) return true; const person = scape.collaborators?.find((item) => item.id === userId || (email && item.email === email)); return Boolean(person && (!edit || person.permission === "edit")); }
 
-async function signedCover(path?: string, fallback = DEFAULT_SCAPE_COVER) { if (!path) return fallback; return (await getSupabase().storage.from(coverBucket).createSignedUrl(path, 60 * 60 * 24 * 7)).data?.signedUrl || fallback; }
+async function signedCover(path?: string, fallback = DEFAULT_SCAPE_COVER) {
+  if (!path) return fallback;
+  const cached = coverUrlCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  const url = (await getSupabase().storage.from(coverBucket).createSignedUrl(path, 60 * 60 * 24 * 7)).data?.signedUrl;
+  if (!url) return fallback;
+  // Reusing a signed URL lets the browser/CDN cache the same thumbnail rather
+  // than treating every dashboard refresh as a brand-new image download.
+  coverUrlCache.set(path, { url, expiresAt: Date.now() + 6 * 24 * 60 * 60 * 1000 });
+  return url;
+}
+
+function storageReference(path: string) { return `storage://${resourceBucket}/${path}`; }
+function pathFromReference(value?: string) {
+  if (!value) return undefined;
+  const prefix = `storage://${resourceBucket}/`;
+  if (value.startsWith(prefix)) return value.slice(prefix.length);
+  const marker = `/object/sign/${resourceBucket}/`;
+  const index = value.indexOf(marker);
+  if (index < 0) return undefined;
+  try { return decodeURIComponent(value.slice(index + marker.length).split("?")[0]); } catch { return undefined; }
+}
+async function signedResource(path: string) {
+  const cached = resourceUrlCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) return cached;
+  const [preview, download] = await Promise.all([
+    getSupabase().storage.from(resourceBucket).createSignedUrl(path, 60 * 60 * 24 * 7),
+    getSupabase().storage.from(resourceBucket).createSignedUrl(path, 60 * 60 * 24 * 7, { download: true }),
+  ]);
+  if (!preview.data?.signedUrl || !download.data?.signedUrl) return undefined;
+  const urls = { preview: preview.data.signedUrl, download: download.data.signedUrl, expiresAt: Date.now() + 6 * 24 * 60 * 60 * 1000 };
+  resourceUrlCache.set(path, urls);
+  return urls;
+}
+async function hydrateResource(resource: Resource): Promise<Resource> {
+  const storagePath = resource.storagePath || pathFromReference(resource.content) || pathFromReference(resource.downloadUrl);
+  if (!storagePath) return resource;
+  const urls = await signedResource(storagePath);
+  return { ...resource, storagePath, content: urls?.preview || resource.content, downloadUrl: urls?.download || resource.downloadUrl };
+}
+function compactRecoverySnapshot(scape: Scape): Scape {
+  return { ...scape, resources: scape.resources.map((item) => item.storagePath ? { ...item, content: storageReference(item.storagePath), downloadUrl: storageReference(item.storagePath) } : item) };
+}
 
 async function loadScape(id: string): Promise<Scape | undefined> {
   const supabase = getSupabase(); const { data: base, error } = await supabase.from("scapes").select("id,owner_id,title,description,template,cover_value,cover_path,cover_position,cover_zoom,starred,archived,hidden_sections,payload,created_at,updated_at").eq("id", id).maybeSingle();
@@ -24,7 +69,24 @@ async function loadScape(id: string): Promise<Scape | undefined> {
   const stateRow = state.data as Record<string, unknown> | null; const sessionRows = rows<Record<string, unknown>>(sessions.data); const eventRows = rows<Record<string, unknown>>(events.data); const backup = (base.payload && typeof base.payload === "object" ? base.payload : {}) as Partial<Scape>;
   const peopleRows = rows<Record<string, unknown>>(people.data); const resourceRows = rows<Record<string, unknown>>(resources.data); const activityRows = rows<Record<string, unknown>>(activity.data);
   const browser: BrowserState | undefined = stateRow || sessionRows.length || eventRows.length ? { profileId: text(stateRow?.profile_id) || undefined, activeSessionId: text(stateRow?.active_session_id) || undefined, activeSessionName: text(stateRow?.active_session_name) || undefined, liveViewUrl: text(stateRow?.live_view_url) || undefined, expiresAt: text(stateRow?.expires_at) || undefined, lastTarget: text(stateRow?.last_target) || undefined, lastUrl: text(stateRow?.last_url) || undefined, updatedAt: text(stateRow?.updated_at) || undefined, sessions: Object.fromEntries(sessionRows.map((row) => [text(row.session_id), { sessionId: text(row.session_id), name: text(row.name, "Browsing session"), capturedAt: text(row.captured_at), activeTab: typeof row.active_tab === "number" ? row.active_tab : undefined, tabs: Array.isArray(row.tabs) ? row.tabs : [], sourceSessionId: text(row.source_session_id) || undefined }])), activity: eventRows.map((row) => ({ id: text(row.id), sessionId: text(row.session_id), type: text(row.type), time: text(row.occurred_at), url: text(row.url) || undefined, target: text(row.target) || undefined, detail: text(row.detail) || undefined })) } : undefined;
-  return { id: text(base.id), ownerId: text(base.owner_id) || undefined, title: text(base.title, "Untitled Scape"), description: text(base.description), template: text(base.template, "Blank Scape"), cover: await signedCover(text(base.cover_path) || undefined, text(base.cover_value, "#1d4ed8")), coverPosition: text(base.cover_position) || undefined, coverZoom: Number(base.cover_zoom) || undefined, starred: bool(base.starred), archived: bool(base.archived), hiddenSections: Array.isArray(base.hidden_sections) ? base.hidden_sections : [], createdAt: text(base.created_at) || undefined, updatedAt: text(base.updated_at) || undefined, updated: "Recently", collaborators: peopleRows.length ? peopleRows.map((row) => ({ id: text(row.user_id), email: text(row.email), name: text(row.name), permission: text(row.permission, "view") as Collaborator["permission"], pending: bool(row.pending) })) : (Array.isArray(backup.collaborators) ? backup.collaborators : []), resources: resourceRows.length ? resourceRows.map((row) => ({ id: text(row.id), type: text(row.type) as Resource["type"], title: text(row.title), detail: text(row.detail), date: text(row.occurred_at), done: bool(row.done), starred: bool(row.starred), group: text(row.group_name) || undefined, content: text(row.content) || undefined, downloadUrl: text(row.download_url) || undefined, mimeType: text(row.mime_type) || undefined })) : (Array.isArray(backup.resources) ? backup.resources : []), activity: activityRows.length ? activityRows.map((row) => ({ id: text(row.id), action: text(row.action), detail: text(row.detail), time: text(row.occurred_at), actorId: text(row.actor_id) || undefined, actorName: text(row.actor_name) || undefined, actorEmail: text(row.actor_email) || undefined })) : (Array.isArray(backup.activity) ? backup.activity : []), browser };
+  const dbCollaborators = peopleRows.map((row) => ({ id: text(row.user_id), email: text(row.email), name: text(row.name), permission: text(row.permission, "view") as Collaborator["permission"], pending: bool(row.pending) }));
+  const dbResources = resourceRows.map((row) => ({ id: text(row.id), type: text(row.type) as Resource["type"], title: text(row.title), detail: text(row.detail), date: text(row.occurred_at), done: bool(row.done), starred: bool(row.starred), group: text(row.group_name) || undefined, content: text(row.content) || undefined, downloadUrl: text(row.download_url) || undefined, mimeType: text(row.mime_type) || undefined }));
+  const dbActivity = activityRows.map((row) => ({ id: text(row.id), action: text(row.action), detail: text(row.detail), time: text(row.occurred_at), actorId: text(row.actor_id) || undefined, actorName: text(row.actor_name) || undefined, actorEmail: text(row.actor_email) || undefined }));
+  // The payload is retained only as a recovery snapshot during the relational
+  // migration. Prefer it whenever present: it is written atomically with the
+  // Scape row, unlike a previous interrupted multi-table resource write.
+  const safeCollaborators = Array.isArray(backup.collaborators) ? backup.collaborators : dbCollaborators;
+  const safeResources = await Promise.all((Array.isArray(backup.resources) ? backup.resources : dbResources).map((resource) => hydrateResource(resource)));
+  const safeActivity = Array.isArray(backup.activity) ? backup.activity : dbActivity;
+  // Repair legacy/interrupted migrations on first read. The JSON snapshot was
+  // written atomically with the Scape row, so it is the safest recovery source
+  // whenever the normalized resources table is unexpectedly empty.
+  if (resourceRows.length === 0 && safeResources.length) {
+    const repaired = safeResources.map((item) => ({ id: item.id, scape_id: text(base.id), type: item.type, title: item.title, detail: item.detail || "", occurred_at: /^\d{4}-/.test(item.date || "") ? item.date : text(base.updated_at), done: Boolean(item.done), starred: Boolean(item.starred), group_name: item.group || null, content: item.storagePath ? storageReference(item.storagePath) : item.content || null, download_url: item.storagePath ? storageReference(item.storagePath) : item.downloadUrl || null, mime_type: item.mimeType || null }));
+    const repair = await supabase.from("scape_resources").upsert(repaired, { onConflict: "scape_id,id" });
+    if (repair.error) console.error("DeepScapes resource recovery failed", repair.error.message);
+  }
+  return { id: text(base.id), ownerId: text(base.owner_id) || undefined, title: text(base.title, "Untitled Scape"), description: text(base.description), template: text(base.template, "Blank Scape"), cover: await signedCover(text(base.cover_path) || undefined, text(base.cover_value, "#1d4ed8")), coverPosition: text(base.cover_position) || undefined, coverZoom: Number(base.cover_zoom) || undefined, starred: bool(base.starred), archived: bool(base.archived), hiddenSections: Array.isArray(base.hidden_sections) ? base.hidden_sections : [], createdAt: text(base.created_at) || undefined, updatedAt: text(base.updated_at) || undefined, updated: "Recently", collaborators: safeCollaborators, resources: safeResources, activity: safeActivity, browser };
 }
 
 async function dashboard(userId: string, email?: string) {
@@ -96,7 +158,7 @@ export async function POST(request: Request) {
   let cover;
   try { cover = await storeCover(incoming, ownerId, previousCover); } catch (cause) { return Response.json({ error: cause instanceof Error ? cause.message : "Thumbnail could not be saved." }, { status: 413 }); }
   const scape: Scape = { ...incoming, ownerId, cover: cover.value, createdAt: existing?.createdAt || incoming.createdAt || now, updatedAt: now, collaborators: ownerId === user.id ? incoming.collaborators : existing?.collaborators || [], activity: incoming.activity.slice(0, 150) };
-  const { error } = await supabase.from("scapes").upsert({ id: scape.id, payload: scape, owner_id: ownerId, title: scape.title, description: scape.description, template: scape.template, cover_value: cover.value, cover_path: cover.path || null, cover_position: scape.coverPosition || null, cover_zoom: scape.coverZoom || null, starred: Boolean(scape.starred), archived: Boolean(scape.archived), hidden_sections: scape.hiddenSections || [], updated_at: now }, { onConflict: "id" });
+  const { error } = await supabase.from("scapes").upsert({ id: scape.id, payload: compactRecoverySnapshot(scape), owner_id: ownerId, title: scape.title, description: scape.description, template: scape.template, cover_value: cover.value, cover_path: cover.path || null, cover_position: scape.coverPosition || null, cover_zoom: scape.coverZoom || null, starred: Boolean(scape.starred), archived: Boolean(scape.archived), hidden_sections: scape.hiddenSections || [], updated_at: now }, { onConflict: "id" });
   if (error) return Response.json({ error: error.message }, { status: 500 });
   const collaboratorEmails = [...new Set((scape.collaborators || []).map((item) => item.email?.trim().toLowerCase()).filter((email): email is string => Boolean(email)))];
   const matchedProfiles = collaboratorEmails.length ? await supabase.from("profiles").select("id,email").in("email", collaboratorEmails) : { data: [], error: null };
@@ -108,7 +170,7 @@ export async function POST(request: Request) {
     const userId = profileIds.get(email) || suppliedUserId || null;
     return { scape_id: scape.id, collaborator_key: userId ? `user:${userId}` : `email:${email}`, user_id: userId, email: email || null, name: item.name || "", permission: item.permission, pending: Boolean(item.pending) };
   });
-  const resources = scape.resources.map((item) => ({ id: item.id, scape_id: scape.id, type: item.type, title: item.title, detail: item.detail || "", occurred_at: /^\d{4}-/.test(item.date || "") ? item.date : now, done: Boolean(item.done), starred: Boolean(item.starred), group_name: item.group || null, content: item.content || null, download_url: item.downloadUrl || null, mime_type: item.mimeType || null, updated_at: now }));
+  const resources = scape.resources.map((item) => ({ id: item.id, scape_id: scape.id, type: item.type, title: item.title, detail: item.detail || "", occurred_at: /^\d{4}-/.test(item.date || "") ? item.date : now, done: Boolean(item.done), starred: Boolean(item.starred), group_name: item.group || null, content: item.storagePath ? storageReference(item.storagePath) : item.content || null, download_url: item.storagePath ? storageReference(item.storagePath) : item.downloadUrl || null, mime_type: item.mimeType || null, updated_at: now }));
   const activities = scape.activity.map((item) => ({ id: item.id, scape_id: scape.id, action: item.action, detail: item.detail || "", occurred_at: /^\d{4}-/.test(item.time || "") ? item.time : now, actor_id: user.id, actor_name: text(user.user_metadata?.username, user.email?.split("@")[0] || "Collaborator"), actor_email: user.email || null }));
   const browser = scape.browser;
   const sessions = Object.values(browser?.sessions || {}).map((item) => ({ session_id: item.sessionId, scape_id: scape.id, name: item.name, captured_at: item.capturedAt, active_tab: item.activeTab ?? null, tabs: item.tabs, source_session_id: item.sourceSessionId || null }));

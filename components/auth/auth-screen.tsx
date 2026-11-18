@@ -103,7 +103,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   }
 
   useEffect(() => {
-    if (user && !isRecovery && !resetComplete && !verified && !(isSignup && showingProfile))
+    if (user && !busy && !redirecting && !isRecovery && !resetComplete && !verified && !(isSignup && showingProfile))
       router.replace(destination);
   }, [
     destination,
@@ -111,6 +111,8 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     resetComplete,
     router,
     user,
+    busy,
+    redirecting,
     verified,
     isSignup,
     showingProfile,
@@ -203,6 +205,9 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
       });
       if (error) setMessage("Username/email or password is incorrect.");
       else {
+        // Do not navigate to an empty dashboard before the idempotent server
+        // setup has confirmed the profile and personal Scape.
+        if (!(await provisionProfile())) return;
         setRedirecting("sign-in");
         router.replace(destination);
       }

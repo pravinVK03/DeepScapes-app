@@ -76,12 +76,18 @@ export function AppHeader({ compact = false }: { compact?: boolean }) {
 
   useEffect(() => {
     if (!user) return;
-    // Reconcile after a phone/desktop switch without polling continuously.
-    // The store merges safely and only redraws if the server has newer data.
-    const refresh = () => { if (!document.hidden) void loadRemoteScapes({ force: true }); };
-    window.addEventListener("focus", refresh);
+    // A tab switch used to force a full dashboard request every time, which
+    // created needless Supabase egress and could race an in-flight save. Only
+    // reconcile after the tab was away long enough for another device to have
+    // made a meaningful change.
+    let hiddenAt = 0;
+    const refresh = () => {
+      if (document.hidden) { hiddenAt = Date.now(); return; }
+      if (hiddenAt && Date.now() - hiddenAt > 90_000) void loadRemoteScapes({ force: true });
+      hiddenAt = 0;
+    };
     document.addEventListener("visibilitychange", refresh);
-    return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+    return () => document.removeEventListener("visibilitychange", refresh);
   }, [user]);
 
   const checkedGmailOwner = useRef(false);

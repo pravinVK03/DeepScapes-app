@@ -123,7 +123,7 @@ export function newId(prefix: string) {
 
 const persistQueues = new Map<string, { inFlight: boolean; pending?: Scape }>();
 
-async function executePersist(scape: Scape) {
+async function executePersist(scape: Scape): Promise<Scape | undefined> {
   const token = (await getBrowserSupabase()?.auth.getSession())?.data.session?.access_token;
   const response = await fetch("/api/scapes", {
     method: "POST",
@@ -132,7 +132,7 @@ async function executePersist(scape: Scape) {
   });
   const data = await response.json().catch(() => undefined) as { scape?: Scape; error?: string } | undefined;
   if (!response.ok) throw new Error(data?.error || "DeepScapes could not save this change. Check your database connection and try again.");
-  if (data?.scape) saveScapes([data.scape, ...getScapes().filter((item) => item.id !== data.scape!.id)]);
+  return data?.scape;
 }
 
 export async function persistScape(scape: Scape): Promise<void> {
@@ -147,7 +147,11 @@ export async function persistScape(scape: Scape): Promise<void> {
   }
   queue.inFlight = true;
   try {
-    await executePersist(scape);
+    const saved = await executePersist(scape);
+    // Never let an acknowledgement for an older edit overwrite the optimistic
+    // state for a newer edit that is still queued. This was the main source of
+    // media apparently disappearing after quick consecutive changes.
+    if (!queue.pending && saved) saveScapes([saved, ...getScapes().filter((item) => item.id !== saved.id)]);
   } finally {
     queue.inFlight = false;
     const next = queue.pending;

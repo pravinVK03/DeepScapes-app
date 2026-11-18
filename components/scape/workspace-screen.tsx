@@ -370,9 +370,9 @@ function ScapeEditor({ scape, close, save, canDelete }: { scape: Scape; close: (
 }
 
 function AddResource({ scape, initialType, close, onAdded, onPersistError }: { scape: Scape; initialType: ResourceType; close: () => void; onAdded: (resource: Resource) => void; onPersistError: () => void }) {
-  const [type, setType] = useState<ResourceType>(initialType); const [title, setTitle] = useState(""); const [content, setContent] = useState(""); const [name, setName] = useState(""); const [group, setGroup] = useState(""); const [data, setData] = useState(""); const [downloadUrl, setDownloadUrl] = useState(""); const [mime, setMime] = useState(""); const [folderUploads, setFolderUploads] = useState<{ file: File; data: string; downloadUrl: string; mime: string }[]>([]); const [uploading, setUploading] = useState(false); const [saving, setSaving] = useState(false); const [message, setMessage] = useState("");
+  const [type, setType] = useState<ResourceType>(initialType); const [title, setTitle] = useState(""); const [content, setContent] = useState(""); const [name, setName] = useState(""); const [group, setGroup] = useState(""); const [data, setData] = useState(""); const [downloadUrl, setDownloadUrl] = useState(""); const [storagePath, setStoragePath] = useState(""); const [mime, setMime] = useState(""); const [folderUploads, setFolderUploads] = useState<{ file: File; data: string; downloadUrl: string; storagePath?: string; mime: string }[]>([]); const [uploading, setUploading] = useState(false); const [saving, setSaving] = useState(false); const [message, setMessage] = useState("");
   function classify(file: File): ResourceType { if (file.type.startsWith("image/")) return "image"; if (file.type.startsWith("video/")) return "video"; if (file.type.startsWith("audio/")) return "audio"; return "file"; }
-  async function uploadAsset(file: File): Promise<{ data: string; downloadUrl: string; mime: string } | undefined> {
+  async function uploadAsset(file: File): Promise<{ data: string; downloadUrl: string; storagePath?: string; mime: string } | undefined> {
     const client = getBrowserSupabase(); const token = (await client?.auth.getSession())?.data.session?.access_token;
     if (client && token) {
       const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
@@ -383,9 +383,9 @@ function AddResource({ scape, initialType, close, onAdded, onPersistError }: { s
         const { error } = await client.storage.from(prepared.bucket).uploadToSignedUrl(prepared.path, prepared.token, file, { contentType: prepared.mimeType || file.type || "application/octet-stream" });
         if (!error) {
           const complete = await fetch("/api/resources/upload", { method: "POST", headers, body: JSON.stringify({ action: "complete", scapeId: scape.id, path: prepared.path }) }).catch(() => undefined);
-          let completed: { url?: string; downloadUrl?: string; error?: string } | undefined;
+          let completed: { url?: string; downloadUrl?: string; path?: string; error?: string } | undefined;
           try { completed = complete ? await complete.json() as typeof completed : undefined; } catch { completed = undefined; }
-          if (complete?.ok && completed?.url) return { data: completed.url, downloadUrl: completed.downloadUrl || completed.url, mime: prepared.mimeType || file.type };
+          if (complete?.ok && completed?.url) return { data: completed.url, downloadUrl: completed.downloadUrl || completed.url, storagePath: completed.path || prepared.path, mime: prepared.mimeType || file.type };
           throw new Error(completed?.error || "The file uploaded, but its secure link could not be created.");
         }
         throw new Error(error.message);
@@ -398,13 +398,13 @@ function AddResource({ scape, initialType, close, onAdded, onPersistError }: { s
   async function upload(file?: File) {
     if (!file) return;
     setMessage(""); setName(file.name); setMime(file.type); setType(classify(file)); if (!title) setTitle(file.name); setFolderUploads([]); setUploading(true);
-    try { const asset = await uploadAsset(file); if (asset) { setData(asset.data); setDownloadUrl(asset.downloadUrl); setMime(asset.mime); } } catch (cause) { setMessage(cause instanceof Error ? cause.message : "The file could not be uploaded."); } finally { setUploading(false); }
+    try { const asset = await uploadAsset(file); if (asset) { setData(asset.data); setDownloadUrl(asset.downloadUrl); setStoragePath(asset.storagePath || ""); setMime(asset.mime); } } catch (cause) { setMessage(cause instanceof Error ? cause.message : "The file could not be uploaded."); } finally { setUploading(false); }
   }
   async function uploadFolder(files: FileList | null) {
     const selected = Array.from(files || []).filter((file) => file.size > 0).slice(0, 100);
     if (!selected.length) return;
-    setMessage(""); setFolderUploads([]); setData(""); setDownloadUrl(""); setUploading(true);
-    const ready: { file: File; data: string; downloadUrl: string; mime: string }[] = [];
+    setMessage(""); setFolderUploads([]); setData(""); setDownloadUrl(""); setStoragePath(""); setUploading(true);
+    const ready: { file: File; data: string; downloadUrl: string; storagePath?: string; mime: string }[] = [];
     try {
       for (const file of selected) { const asset = await uploadAsset(file); if (asset) ready.push({ file, ...asset }); }
       setFolderUploads(ready); setName(ready.length ? `${ready.length} files ready` : ""); setMessage(`${ready.length} file${ready.length === 1 ? "" : "s"} ready to add. Files will be placed in the matching media sections.`);
@@ -414,7 +414,7 @@ function AddResource({ scape, initialType, close, onAdded, onPersistError }: { s
     if (uploading || saving) return;
     setSaving(true); setMessage("");
     const now = new Date().toISOString();
-    const items: Resource[] = folderUploads.length ? folderUploads.map(({ file, ...asset }) => { const folderPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || ""; const folderName = group.trim() || folderPath.split("/")[0] || "Uploaded folder"; const resourceType = classify(file); return { id: newId("resource"), title: file.name, type: resourceType, group: folderName, detail: (resourceType === "file" ? "Document" : resourceType) + " · " + file.name, date: now, content: asset.data, downloadUrl: asset.downloadUrl, mimeType: asset.mime }; }) : [{ id: newId("resource"), title: title || name || "Untitled resource", type, group: group.trim() || undefined, detail: (type === "file" ? "Document" : type) + " · " + (name || "Added"), date: now, content: data || content, downloadUrl: downloadUrl || undefined, mimeType: mime }];
+    const items: Resource[] = folderUploads.length ? folderUploads.map(({ file, ...asset }) => { const folderPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || ""; const folderName = group.trim() || folderPath.split("/")[0] || "Uploaded folder"; const resourceType = classify(file); return { id: newId("resource"), title: file.name, type: resourceType, group: folderName, detail: (resourceType === "file" ? "Document" : resourceType) + " · " + file.name, date: now, content: asset.data, downloadUrl: asset.downloadUrl, storagePath: asset.storagePath, mimeType: asset.mime }; }) : [{ id: newId("resource"), title: title || name || "Untitled resource", type, group: group.trim() || undefined, detail: (type === "file" ? "Document" : type) + " · " + (name || "Added"), date: now, content: data || content, downloadUrl: downloadUrl || undefined, storagePath: storagePath || undefined, mimeType: mime }];
     // saveScape updates the local store synchronously. Close immediately, then
     // finish the remote persistence without making the modal feel stuck.
     const current = getScape(scape.id) || scape;

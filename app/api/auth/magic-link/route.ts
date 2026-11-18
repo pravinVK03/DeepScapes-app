@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   const email = body.email?.trim().toLowerCase();
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) return Response.json({ error: "Enter a valid email address." }, { status: 400 });
   const origin = new URL(request.url).origin;
-  const destination = body.destination?.startsWith("/") ? body.destination : "/scapes";
+  const destination = body.destination?.startsWith("/") && !body.destination.startsWith("//") ? body.destination : "/scapes";
   const supabase = getSupabase();
   // Always pass email-link users through signup. Completed accounts redirect
   // straight to their destination there, while pending accounts return to the

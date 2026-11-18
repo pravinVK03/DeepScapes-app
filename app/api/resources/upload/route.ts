@@ -85,7 +85,7 @@ export async function POST(request: Request) {
         access.supabase.storage.from(bucket).createSignedUrl(body.path, 60 * 60 * 24 * 365, { download: body.fileName || true }),
       ]);
       if (preview.error || !preview.data?.signedUrl || download.error || !download.data?.signedUrl) return Response.json({ error: preview.error?.message ?? download.error?.message ?? "Could not create a file link" }, { status: 500 });
-      return Response.json({ url: preview.data.signedUrl, downloadUrl: download.data.signedUrl });
+      return Response.json({ url: preview.data.signedUrl, downloadUrl: download.data.signedUrl, path: body.path });
     }
     return Response.json({ error: "Invalid upload request" }, { status: 400 });
   }
