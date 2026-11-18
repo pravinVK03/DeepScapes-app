@@ -86,7 +86,11 @@ async function loadScape(id: string): Promise<Scape | undefined> {
     const repair = await supabase.from("scape_resources").upsert(repaired, { onConflict: "scape_id,id" });
     if (repair.error) console.error("DeepScapes resource recovery failed", repair.error.message);
   }
-  return { id: text(base.id), ownerId: text(base.owner_id) || undefined, title: text(base.title, "Untitled Scape"), description: text(base.description), template: text(base.template, "Blank Scape"), cover: await signedCover(text(base.cover_path) || undefined, text(base.cover_value, "#1d4ed8")), coverPosition: text(base.cover_position) || undefined, coverZoom: Number(base.cover_zoom) || undefined, starred: bool(base.starred), archived: bool(base.archived), hiddenSections: Array.isArray(base.hidden_sections) ? base.hidden_sections : [], createdAt: text(base.created_at) || undefined, updatedAt: text(base.updated_at) || undefined, updated: "Recently", collaborators: safeCollaborators, resources: safeResources, activity: safeActivity, browser };
+  // Never conceal recovered content. A previously removed section can remain
+  // hidden only while it is empty; as soon as it has resources again it must
+  // be shown so users do not mistake their data for deleted content.
+  const hiddenSections = (Array.isArray(base.hidden_sections) ? base.hidden_sections : []).filter((type) => !safeResources.some((resource) => resource.type === type));
+  return { id: text(base.id), ownerId: text(base.owner_id) || undefined, title: text(base.title, "Untitled Scape"), description: text(base.description), template: text(base.template, "Blank Scape"), cover: await signedCover(text(base.cover_path) || undefined, text(base.cover_value, "#1d4ed8")), coverPosition: text(base.cover_position) || undefined, coverZoom: Number(base.cover_zoom) || undefined, starred: bool(base.starred), archived: bool(base.archived), hiddenSections, createdAt: text(base.created_at) || undefined, updatedAt: text(base.updated_at) || undefined, updated: "Recently", collaborators: safeCollaborators, resources: safeResources, activity: safeActivity, browser };
 }
 
 async function dashboard(userId: string, email?: string) {
